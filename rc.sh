@@ -1,5 +1,4 @@
 set -euo pipefail
-
 _prelude() {
 	[ "${DEBUG:-0}" -gt 0 ] && set -x
 
@@ -10,14 +9,15 @@ _prelude() {
 	if [ -f "$ROOT/project.sh" ]; then
 		source $ROOT/project.sh
 	fi
+	export DEFAULT_ENV="${DEFAULT_ENV:-development}"
 	export PS1="$NAMESPACE [\$ENV] "
 	export PS4='+ $(date +"%Y-%m-%dT%H:%M:%S") ${BASH_SOURCE:-1}:${LINENO:-} ${FUNCNAME[0]:-main}() - '
-    export DEBUG="${DEBUG:-0}"
-	export ENV="${ENV:-development}"
+	export DEBUG="${DEBUG:-0}"
+	export ENV="${ENV:-$DEFAULT_ENV}"
 	export HISTFILE="$ROOT/shell_history"
-    export FORCE="${FORCE:-}"
-    export CONFIG_JSON="$ROOT/config.json"
-    export JQ="$(which jq)"
+	export FORCE="${FORCE:-}"
+	export CONFIG_JSON="$ROOT/config.json"
+	export JQ="$(which jq)"
 	export PAGER="${PAGER:-$(which less)}"
 
 	_check_prereq
@@ -62,7 +62,7 @@ _cfg_get() {
 }
 
 ssh() {
-	$(which ssh) -o ControlPath=$ROOT/ssh/sockets/%r@%h-%p -F "$ROOT/ssh/config" "$args"
+	$(which ssh) -o ControlPath=$ROOT/ssh/sockets/%r@%h-%p -F "$ROOT/ssh/config" $@
 }
 
 debug() {
@@ -92,10 +92,11 @@ install() {
 			false;
 		fi
 	done
-	for app in $@; do
-		local build_vars="ENV NAMESPACE artifacts resources app server"
 
-		if [ "$ENV" != "development" ]; then
+	for app in $@; do
+		local build_vars="ENV NAMESPACE VERSION artifacts resources app server"
+
+		if [ "$ENV" != "$DEFAULT_ENV" ]; then
 			local server="$(_cfg_get deployments $app $ENV)"
 			local shell="ssh $server $shell"
 		else
