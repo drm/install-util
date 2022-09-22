@@ -27,24 +27,6 @@ _prelude() {
 	fi
 }
 
-_build_project() { 						# Builds a project accoriding
-	local project_dir="$ROOT/../$1/" 	# 1: A git repository containing the build.sh file
-	local docker_image="$2"				# 2: The docker image name
-
-	[ -d "$project_dir" ] || _fail "Project dir does not exist: $project_dir.\nPlease clone the git repo at this location."
-
-	export VERSION="${VERSION:-}"
-	if [ "$VERSION" == "" ]; then
-		VERSION=$(cd "$project_dir" && git describe)
-	fi
-
-	local canonical_image=$DOCKER_REPO/$docker_image:$VERSION
-
-	if [ "${FORCE_BUILD:-}" != "" ] || ( ! docker inspect $canonical_image > /dev/null 2>&1 && ! docker pull $canonical_image > /dev/null 2>&1 ); then
-		( cd "$project_dir" && ./build.sh $VERSION )
-	fi
-}
-
 _fail() {
 	echo -e "FATAL: $1" >&2
 	exit 1
