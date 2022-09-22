@@ -1,12 +1,10 @@
-if [ "${ROOT:-}" == "" ]; then
-	echo "Missing ROOT."
-	exit;
-fi
+#!/usr/bin/env bash
 
+RCFILE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/rc.sh"
 RESTART="y"
 while [ "$RESTART" == "y" ]; do
-	( env -i TERM="$TERM" INTERACTIVE=1 bash \
-		--rcfile "${BASH_SOURCE[0]}/rc.sh" \
+	( env -i ROOT="$ROOT" TERM="$TERM" INTERACTIVE=1 bash \
+		--rcfile "$RCFILE" \
 		-i )
 	status="$?"
 	if [ "$status" != "0" ]; then

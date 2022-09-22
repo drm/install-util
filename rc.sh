@@ -3,8 +3,13 @@ set -euo pipefail
 _prelude() {
 	[ "${DEBUG:-0}" -gt 0 ] && set -x
 
-	export ROOT="$(cd "$(dirname "$BASH_SOURCE")" && pwd)"
-	source $ROOT/project.sh
+	if [ "${ROOT:-}" == "" ]; then
+		echo "Missing ROOT. See README.md for details."
+		exit;
+	fi
+	if [ -f "$ROOT/project.sh" ]; then
+		source $ROOT/project.sh
+	fi
 	export PS1="$NAMESPACE [\$ENV] "
 	export PS4='+ $(date +"%Y-%m-%dT%H:%M:%S") ${BASH_SOURCE:-1}:${LINENO:-} ${FUNCNAME[0]:-main}() - '
     export DEBUG="${DEBUG:-0}"
@@ -149,7 +154,7 @@ install() {
 						set -x
 					fi
 					if ! docker network inspect $network >/dev/null 2>&1; then
-					 	docker network create $network --subnet="$(_cfg_get network $ENV).0/24"
+					 	docker network create $network --subnet="$(_cfg_get networks $ENV).0/24"
 					fi
 				EOF
 				) \
