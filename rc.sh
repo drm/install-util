@@ -98,7 +98,7 @@ install() {
 
 		if [ "$ENV" != "$DEFAULT_ENV" ]; then
 			local server="$(_cfg_get deployments $app $ENV)"
-			local shell="ssh $server $shell"
+			local shell="ssh $(_cfg_get "servers" $server) $shell"
 		else
 			local server=""
 		fi
@@ -109,41 +109,48 @@ install() {
 			local $subdir="$ROOT/apps/$app/$subdir/"
 		done
 		artifacts="$artifacts/$ENV"
-
+		mkdir -p $artifacts
 		if [ -f "$ROOT/apps/$app/build.sh" ]; then
-			mkdir -p $artifacts
 			source "$ROOT/apps/$app/build.sh"
 		fi
 
 		if [ "$server" != "" ]; then
 			local remote_pwd="$($shell -c 'pwd')"
 			for subdir in resources artifacts; do
-				if [ -d "$ROOT/apps/$app/resources" ]; then
-					rsync "$ROOT/apps/$app/$subdir/" "$server:$app/$subdir/"
-					local $subdir="$remote_pwd/$app/resources)"
+				local local_dir="${!subdir}"
+				local remote_dir="$remote_pwd/$app/$ENV/$subdir"
+				if [ -d "$local_dir" ]; then
+					ssh "$(_cfg_get "servers" $server)" mkdir -p $remote_dir
+					rsync -r $local_dir/ "$(_cfg_get "servers" $server):$remote_dir/"
+					local $subdir="$remote_dir"
+				else
+					local $subdir=""
 				fi
 			done;
 		fi
-
-		if [ "$DEBUG" -gt 1 ]; then
-			shell="cat"
-		fi
-
-		$shell \
+		local script="$ROOT/apps/$app/artifacts/$ENV.sh"
+		echo "Building script: $script"
+		cat \
+			> $script \
 			<(cat \
 				<(cat <<-EOF
+					#!/usr/bin/env bash
 					set -euo pipefail
 					if [ "$DEBUG" -gt 0 ]; then
 						set -x
 					fi
 					if ! docker network inspect $network >/dev/null 2>&1; then
-					 	docker network create $network --subnet="$(_cfg_get networks $ENV).0/24"
+						docker network create $network --subnet="$(_cfg_get networks $ENV).0/24"
 					fi
 				EOF
 				) \
-				<(for var in $build_vars; do echo $var='"'${!var}'"'; done ) \
+				<(for var in $build_vars; do echo $var='"'${!var:-}'"'; done ) \
 				$ROOT/apps/$app/install.sh
 			)
+		if [ "$DEBUG" -gt 1 ]; then
+			shell="cat"
+		fi
+		$shell < $script;
 	done;
 }
 
