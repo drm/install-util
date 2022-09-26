@@ -11,7 +11,7 @@ _prelude() {
 	fi
 	export DEFAULT_ENV="${DEFAULT_ENV:-development}"
 	export PS1="$NAMESPACE [\$ENV] "
-	export PS4='+ $(date +"%Y-%m-%dT%H:%M:%S") ${BASH_SOURCE:-1}:${LINENO:-} ${FUNCNAME[0]:-main}() - '
+	export PS4="\033[0;31m[debug]\033[0m"'+ $(date +"%Y-%m-%dT%H:%M:%S") ${BASH_SOURCE:-1}:${LINENO:-} ${FUNCNAME[0]:-main}() - '
 	export DEBUG="${DEBUG:-0}"
 	export ENV="${ENV:-$DEFAULT_ENV}"
 	export HISTFILE="$ROOT/shell_history"
@@ -48,7 +48,6 @@ _jq() {
 	local path=".${root}$(for a in $@; do echo -n "[\"${a}\"]"; done)"
 	local val="$("$JQ" -e -r "$path" < $CONFIG_JSON)"
 	if [ "$val" == "null" ]; then
-		_fail "Invalid JQ path $path"
 		echo "";
 	else
 		echo "$val";
@@ -57,7 +56,9 @@ _jq() {
 
 _cfg_get() {
 	local val="$(_jq "$@")"
-	_assert_not_empty "$val" "JQ return value is empty"
+	if [ "$DEBUG" -gt 0 ] && [ "$val" == "" ]; then
+		echo "JQ return value is empty for $@" >&2
+	fi
 	echo "$val";
 }
 
@@ -95,12 +96,19 @@ install() {
 
 	for app in $@; do
 		local build_vars="ENV NAMESPACE VERSION artifacts resources app server"
+		local server
 
-		if [ "$ENV" != "$DEFAULT_ENV" ]; then
-			local server="$(_cfg_get deployments $app $ENV)"
-			local shell="ssh $(_cfg_get "servers" $server) $shell"
+		if [ "$(_cfg_get deployments $app)" == "*" ]; then
+			server="$ENV"
 		else
-			local server=""
+			server="$(_cfg_get deployments $app $ENV)"
+			if [ "$server" == "" ]; then
+				_fail "No deployment configured for $app on $ENV"
+			fi
+		fi
+
+		if [ "$server" != "local" ]; then
+			local shell="ssh $(_cfg_get "servers" $server) $shell"
 		fi
 
 		source $ROOT/vars.sh
@@ -114,12 +122,12 @@ install() {
 			source "$ROOT/apps/$app/build.sh"
 		fi
 
-		if [ "$server" != "" ]; then
+		if [ "$server" != "local" ]; then
 			local remote_pwd="$($shell -c 'pwd')"
 			for subdir in resources artifacts; do
 				local local_dir="${!subdir}"
 				local remote_dir="$remote_pwd/$app/$ENV/$subdir"
-				if [ -d "$local_dir" ]; then
+				if [ -d "$local_dir" ] && [ "$(find $local_dir -type f | wc -l)" -gt 0 ]; then
 					ssh "$(_cfg_get "servers" $server)" mkdir -p $remote_dir
 					rsync -r $local_dir/ "$(_cfg_get "servers" $server):$remote_dir/"
 					local $subdir="$remote_dir"
@@ -139,10 +147,17 @@ install() {
 					if [ "$DEBUG" -gt 0 ]; then
 						set -x
 					fi
-					if ! docker network inspect $network >/dev/null 2>&1; then
-						docker network create $network --subnet="$(_cfg_get networks $ENV).0/24"
-					fi
 				EOF
+				) \
+				<(if [ "$(_cfg_get networks $ENV)" != "" ]; then
+					cat <<-EOF
+						if ! docker network inspect $network >/dev/null 2>&1; then
+							docker network create $network --subnet="$(_cfg_get networks $ENV).0/24"
+						fi
+					EOF
+				else
+					echo "# No network configured for env $ENV";
+				fi
 				) \
 				<(for var in $build_vars; do echo $var='"'${!var:-}'"'; done ) \
 				$ROOT/apps/$app/install.sh
@@ -156,6 +171,10 @@ install() {
 
 help() {
 	$PAGER $ROOT/README.md
+}
+
+apps() {
+	find $ROOT/apps -maxdepth 2 -type f -name "install.sh" | awk -F "/" '{print $(NF-1)}' | sort
 }
 
 _prelude;
