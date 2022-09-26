@@ -62,8 +62,31 @@ _cfg_get() {
 	echo "$val";
 }
 
+_cfg_get_server() {
+	local app="$1"
+	local ENV="$2"
+	if [ "$(_cfg_get deployments $app)" == "*" ]; then
+		server="$ENV"
+	else
+		server="$(_cfg_get deployments $app $ENV)"
+		if [ "$server" == "" ]; then
+			_fail "No deployment configured for $app on $ENV"
+		fi
+	fi
+	echo "$server"
+}
+
+_cfg_get_shell() {
+	local server="$1"
+	local shell="/bin/bash"
+	if [ "$server" != "local" ]; then
+		shell="ssh $(_cfg_get "servers" $server) $shell"
+	fi
+	echo "$shell"
+}
+
 ssh() {
-	$(which ssh) -o ControlPath=$ROOT/ssh/sockets/%r@%h-%p -F "$ROOT/ssh/config" $@
+	$(which ssh) -F "$ROOT/ssh/config" $@
 }
 
 debug() {
@@ -86,7 +109,6 @@ vars() {
 }
 
 install() {
-	local shell="/bin/bash"
 	for app in $@; do
 		if ! [ -f "$ROOT/apps/$app/install.sh" ]; then
 			echo "Missing installation script $ROOT/apps/$app/install.sh"
@@ -96,20 +118,8 @@ install() {
 
 	for app in $@; do
 		local build_vars="ENV NAMESPACE VERSION artifacts resources app server"
-		local server
-
-		if [ "$(_cfg_get deployments $app)" == "*" ]; then
-			server="$ENV"
-		else
-			server="$(_cfg_get deployments $app $ENV)"
-			if [ "$server" == "" ]; then
-				_fail "No deployment configured for $app on $ENV"
-			fi
-		fi
-
-		if [ "$server" != "local" ]; then
-			local shell="ssh $(_cfg_get "servers" $server) $shell"
-		fi
+		local server="$(_cfg_get_server $app $ENV)"
+		local shell="$(_cfg_get_shell $server)"
 
 		source $ROOT/vars.sh
 
@@ -129,7 +139,7 @@ install() {
 				local remote_dir="$remote_pwd/$app/$ENV/$subdir"
 				if [ -d "$local_dir" ] && [ "$(find $local_dir -type f | wc -l)" -gt 0 ]; then
 					ssh "$(_cfg_get "servers" $server)" mkdir -p $remote_dir
-					rsync -r $local_dir/ "$(_cfg_get "servers" $server):$remote_dir/"
+					rsync -prL $local_dir/ "$(_cfg_get "servers" $server):$remote_dir/"
 					local $subdir="$remote_dir"
 				else
 					local $subdir=""
@@ -175,6 +185,38 @@ help() {
 
 apps() {
 	find $ROOT/apps -maxdepth 2 -type f -name "install.sh" | awk -F "/" '{print $(NF-1)}' | sort
+}
+
+__do() {
+	local fn="$1"
+	local app="$2"
+	local server="$(_cfg_get_server $app $ENV)"
+	local shell="$(_cfg_get_shell "$server")"
+
+#	if [ -f "$ROOT/apps/$app/$fn.sh" ]; then
+#		source "$ROOT/apps/$app/$fn.sh"
+#	fi
+
+	case "$fn" in
+		"version-at" )
+			$shell <<-EOF
+				docker ps --format='{{ .Names }}\t{{ .Image }}' | grep "$NAMESPACE-$app-$ENV" | awk -F ":" '{print \$NF}'
+			EOF
+		;;
+		"logs" )
+			$shell <<-EOF
+				docker logs --tail=100 --follow "$NAMESPACE-$app-$ENV"
+			EOF
+		;;
+	esac
+}
+
+version-at() {
+	__do version-at $@
+}
+
+logs() {
+	__do logs $@
 }
 
 _prelude;
