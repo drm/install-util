@@ -156,7 +156,7 @@ install() {
 					if [ "$DEBUG" -ge 2 ]; then
 						rsync_opts="$rsync_opts -n"
 					fi
-					if [ "$DEBUG" == "0" ]; then
+					if [ "$DEBUG" -lt 2 ]; then
 						$shell <<-EOF
 							mkdir -pv "$remote_dir"
 						EOF
