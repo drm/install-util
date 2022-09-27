@@ -80,13 +80,17 @@ _cfg_get_shell() {
 	local server="$1"
 	local shell="/bin/bash"
 	if [ "$server" != "local" ]; then
-		shell="ssh $(_cfg_get "servers" $server) $shell"
+		shell="ssh $server $shell"
 	fi
 	echo "$shell"
 }
 
 ssh() {
 	$(which ssh) -F "$ROOT/ssh/config" $@
+}
+
+rsync() {
+	$(which rsync) -e "$(which ssh) -F $ROOT/ssh/config" $@
 }
 
 debug() {
@@ -138,8 +142,11 @@ install() {
 				local local_dir="${!subdir}"
 				local remote_dir="$remote_pwd/$app/$ENV/$subdir"
 				if [ -d "$local_dir" ] && [ "$(find $local_dir -type f | wc -l)" -gt 0 ]; then
-					ssh "$(_cfg_get "servers" $server)" mkdir -p $remote_dir
-					rsync -prL $local_dir/ "$(_cfg_get "servers" $server):$remote_dir/"
+					rsync_opts=""
+					if [ "$DEBUG" -ge 2 ]; then
+						rsync_opts="n"
+					fi
+					rsync -prL$rsync_opts --mkpath $local_dir/ "$server:$remote_dir/"
 					local $subdir="$remote_dir"
 				else
 					local $subdir=""
