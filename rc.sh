@@ -129,8 +129,8 @@ install() {
 
 	for app in $@; do
 		local build_vars="ENV NAMESPACE VERSION artifacts resources app server"
-		local server="$(_cfg_get_server $app $ENV)"
-		local shell="$(_cfg_get_shell $server)"
+		local server; server="$(_cfg_get_server $app $ENV)"
+		local shell; shell="$(_cfg_get_shell $server)"
 
 		source $ROOT/vars.sh
 
@@ -214,8 +214,8 @@ apps() {
 __do() {
 	local fn="$1"
 	local app="$2"
-	local server="$(_cfg_get_server $app $ENV)"
-	local shell="$(_cfg_get_shell "$server")"
+	local server; server="$(_cfg_get_server $app $ENV)"
+	local shell; shell="$(_cfg_get_shell "$server")"
 
 #	if [ -f "$ROOT/apps/$app/$fn.sh" ]; then
 #		source "$ROOT/apps/$app/$fn.sh"
