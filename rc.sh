@@ -25,6 +25,9 @@ _prelude() {
 	if [ "${INTERACTIVE:-}" == "1" ]; then
 		cat "$ROOT/resources/doc/header.md";
 	fi
+
+	export APP_NAMES=$($JQ -r '(.deployments|keys)[] ' < $CONFIG_JSON)
+	export ENV_NAMES=$(for a in $APP_NAMES; do $JQ -r '(.deployments["'$a'"]|keys?)[]' < $CONFIG_JSON; done | sort | uniq)
 }
 
 _fail() {
@@ -45,8 +48,8 @@ _check_prereq() {
 _jq() {
 	local root="$1"
 	shift;
-	local path=".${root}$(for a in $@; do echo -n "[\"${a}\"]"; done)"
-	local val="$("$JQ" -e -r "$path" < $CONFIG_JSON)"
+	local path; path=".${root}$(for a in $@; do echo -n "[\"${a}\"]"; done)"
+	local val; val="$("$JQ" -e -r "$path" < $CONFIG_JSON)"
 	if [ "$val" == "null" ]; then
 		echo "";
 	else
@@ -55,7 +58,7 @@ _jq() {
 }
 
 _cfg_get() {
-	local val="$(_jq "$@")"
+	local val; val="$(_jq "$@")"
 	if [ "$DEBUG" -gt 0 ] && [ "$val" == "" ]; then
 		echo "JQ return value is empty for $@" >&2
 	fi
@@ -76,13 +79,17 @@ _cfg_get_server() {
 	echo "$server"
 }
 
-_cfg_get_shell() {
+_cfg_get_ssh_prefix() {
 	local server="$1"
-	local shell="/bin/bash"
+	local opts="${2:-}"
 	if [ "$server" != "local" ]; then
-		shell="ssh $server $shell"
+		echo "ssh $opts $server "
 	fi
-	echo "$shell"
+}
+
+_cfg_get_shell() {
+	local shell="/bin/bash"
+	echo "$(_cfg_get_ssh_prefix "$1")$shell"
 }
 
 ssh() {
@@ -132,21 +139,29 @@ install() {
 		done
 		artifacts="$artifacts/$ENV"
 		mkdir -p $artifacts
-		if [ -f "$ROOT/apps/$app/build.sh" ]; then
-			source "$ROOT/apps/$app/build.sh"
+		local build_script="$ROOT/apps/$app/build.sh"
+		if [ -f "$build_script" ]; then
+			echo "Calling build script: $build_script"
+			source "$build_script"
 		fi
 
 		if [ "$server" != "local" ]; then
-			local remote_pwd="$($shell -c 'pwd')"
+			local remote_pwd; remote_pwd="$($shell -c 'pwd')"
 			for subdir in resources artifacts; do
 				local local_dir="${!subdir}"
 				local remote_dir="$remote_pwd/$app/$ENV/$subdir"
 				if [ -d "$local_dir" ] && [ "$(find $local_dir -type f | wc -l)" -gt 0 ]; then
-					rsync_opts=""
+					echo "Syncing $subdir"
+					rsync_opts="-v"
 					if [ "$DEBUG" -ge 2 ]; then
-						rsync_opts="n"
+						rsync_opts="$rsync_opts -n"
 					fi
-					rsync -prL$rsync_opts --mkpath $local_dir/ "$server:$remote_dir/"
+					if [ "$DEBUG" == "0" ]; then
+						$shell <<-EOF
+							mkdir -pv "$remote_dir"
+						EOF
+					fi
+					rsync -prL $rsync_opts $local_dir/ "$server:$remote_dir/"
 					local $subdir="$remote_dir"
 				else
 					local $subdir=""
@@ -155,6 +170,7 @@ install() {
 		fi
 		local script="$ROOT/apps/$app/artifacts/$ENV.sh"
 		echo "Building script: $script"
+
 		cat \
 			> $script \
 			<(cat \
@@ -179,6 +195,7 @@ install() {
 				<(for var in $build_vars; do echo $var='"'${!var:-}'"'; done ) \
 				$ROOT/apps/$app/install.sh
 			)
+
 		if [ "$DEBUG" -gt 1 ]; then
 			shell="cat"
 		fi
@@ -227,3 +244,10 @@ logs() {
 }
 
 _prelude;
+
+# Trick to autocomplete envs; typing env name will select it.
+for e in $ENV_NAMES; do
+	eval "$e() {
+		env $e;
+	}"
+done;
