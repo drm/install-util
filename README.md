@@ -148,14 +148,23 @@ While creating new apps, it is advisable to enable debugging at level 2 or highe
 as long as the script is still in development:
 
 ```
+DEBUG=1 ./install.sh testing mysql redis
+```
+This will add 'set -x' tracing to the scripts.
+
+```
 DEBUG=2 ./install.sh testing mysql redis
 ```
+This will print the script that would otherwise be executed on
+the configured server and thus effectively serves as a dry-run.
+Also, the rsync that takes care of transporting the artifacts
+and resources is executed using a '-n' (dry-run) flag.
 
-This will ultimately print the script that would otherwise be executed on
-the configured server. `DEBUG=1` will only output a lot of tracing information
-but will do the ultimate installation on the remote.
+```
+DEBUG=3 ./install.sh testing mysql redis
+```
 
-DEBUG=3 will print the resulting installation script using `envsubst` which
+This will print the resulting installation script using `envsubst` which
 tries to expand as much of the variables in the script as possible. This is
 useful to easily spot escape and/or quoting errors. Note that this isn't 
 exactly the way bash works, so it should only be used as a means of debugging
