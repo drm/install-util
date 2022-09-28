@@ -1,4 +1,6 @@
 set -euo pipefail
+
+## Called at the end of this file to initialize the environment
 _prelude() {
 	[ "${DEBUG:-0}" -gt 0 ] && set -x
 
@@ -11,40 +13,45 @@ _prelude() {
 	fi
 	export DEFAULT_ENV="${DEFAULT_ENV:-development}"
 	export PS1="$NAMESPACE [\$ENV] "
-	export PS4="\033[0;31m[debug]\033[0m"'+ $(date +"%Y-%m-%dT%H:%M:%S") ${BASH_SOURCE:-1}:${LINENO:-} ${FUNCNAME[0]:-main}() - '
+	export PS4="+ \033[0;37m[debug]\033[0m"' $(date +"%Y-%m-%dT%H:%M:%S.%N") $SHLVL $BASH_SUBSHELL ${BASH_SOURCE:-1}:${LINENO:-} ${FUNCNAME[0]:-main}() - '
 	export DEBUG="${DEBUG:-0}"
 	export ENV="${ENV:-$DEFAULT_ENV}"
 	export HISTFILE="$ROOT/shell_history"
 	export FORCE="${FORCE:-}"
 	export CONFIG_JSON="$ROOT/config.json"
-	export JQ="$(which jq)"
 	export PAGER="${PAGER:-$(which less)}"
+
+	export JQ="$(which jq)"
+	export SSH="$(which ssh)"
+	export RSYNC="$(which rsync)"
 
 	_check_prereq
 
 	if [ "${INTERACTIVE:-}" == "1" ]; then
 		cat "$ROOT/resources/doc/header.md";
 	fi
-
-	export APP_NAMES=$($JQ -r '(.deployments|keys)[] ' < $CONFIG_JSON)
-	export ENV_NAMES=$(for a in $APP_NAMES; do $JQ -r '(.deployments["'$a'"]|keys?)[]' < $CONFIG_JSON; done | sort | uniq)
 }
 
+## Helper to report an error and exit the shell.
 _fail() {
 	echo -e "FATAL: $1" >&2
 	exit 1
 }
 
+## Helper to assert non-empty vars
 _assert_not_empty() {
 	[ "$1" != "" ] || _fail "$2"
 }
 
+## Check the prerequisites for using this script
 _check_prereq() {
 	[ "$JQ" == "" ] && _fail "jq is not found in the PATH..."
 	! [ -f "$CONFIG_JSON" ] && _fail "$CONFIG_JSON is not a file..."
 	return 0
 }
 
+## Call jq, building a path based on the passed arguments;
+## e.g. `_jq a b c` would fetch the value `.a["b"]["c"]`
 _jq() {
 	local root="$1"
 	shift;
@@ -57,6 +64,8 @@ _jq() {
 	fi;
 }
 
+## Get a config value from config.json, based on the same
+## principle as _jq, but warn if the value is empty.
 _cfg_get() {
 	local val; val="$(_jq "$@")"
 	if [ "$DEBUG" -gt 0 ] && [ "$val" == "" ]; then
@@ -65,6 +74,8 @@ _cfg_get() {
 	echo "$val";
 }
 
+## Get the server for the passed $app and $ENV,
+## e.g. `_cfg_get_server postgres production`
 _cfg_get_server() {
 	local app="$1"
 	local ENV="$2"
@@ -79,6 +90,8 @@ _cfg_get_server() {
 	echo "$server"
 }
 
+## Get the ssh prefix for the specified server. Will return empty string
+## if the server is 'local'.
 _cfg_get_ssh_prefix() {
 	local server="$1"
 	local opts="${2:-}"
@@ -87,19 +100,34 @@ _cfg_get_ssh_prefix() {
 	fi
 }
 
+## Get the shell for the specified deployment; i.e. prefix /bin/bash
+## with the ssh prefix, if any. Supports two modes:
+## single argument: _cfg_get_shell SERVER
+## two arguments: _cfg_get_shell APP ENV
 _cfg_get_shell() {
+	local server;
+	if [ "$#" -eq 2 ]; then
+		local app="$1"
+		local env="$2"
+		server="$(_cfg_get_server $1 $2)"
+	elif [ "$#" -eq 1 ]; then
+		server="$1"
+	fi
 	local shell="/bin/bash"
-	echo "$(_cfg_get_ssh_prefix "$1")$shell"
+	echo "$(_cfg_get_ssh_prefix "$server")$shell"
 }
 
+## Wrapper for 'ssh' to use the project ssh config.
 ssh() {
-	$(which ssh) -F "$ROOT/ssh/config" $@
+	"$SSH" -F "$ROOT/ssh/config" $@
 }
 
+## Wrapper for 'rsync' to use the project ssh config.
 rsync() {
-	$(which rsync) -e "$(which ssh) -F $ROOT/ssh/config" $@
+	"$RSYNC" -e "$SSH -F $ROOT/ssh/config" $@
 }
 
+## Increase debug level, or turn debugging off.
 debug() {
 	if [ "${1:-}" == "off" ]; then
 		DEBUG="0"
@@ -110,15 +138,18 @@ debug() {
 	echo "Set debugging level to $DEBUG"
 }
 
+## Change current working environment.
 env() {
 	ENV="$1"
 	_prelude
 }
 
+## Dump current variables.
 vars() {
 	"$(which env)";
 }
 
+## Perform deployment for all specified arguments.
 install() {
 	for app in $@; do
 		if ! [ -f "$ROOT/apps/$app/install.sh" ]; then
@@ -184,9 +215,6 @@ install() {
 				) \
 				<(if [ "$(_cfg_get networks $ENV)" != "" ]; then
 					cat <<-EOF
-						if ! docker network inspect $network >/dev/null 2>&1; then
-							docker network create $network --subnet="$(_cfg_get networks $ENV).0/24"
-						fi
 					EOF
 				else
 					echo "# No network configured for env $ENV";
@@ -203,51 +231,24 @@ install() {
 	done;
 }
 
+## Show help.
 help() {
 	$PAGER $ROOT/README.md
 }
 
+## List all apps.
 apps() {
-	find $ROOT/apps -maxdepth 2 -type f -name "install.sh" | awk -F "/" '{print $(NF-1)}' | sort
+	for app in $($JQ -r '(.deployments|keys)[] ' < $CONFIG_JSON); do
+		if [ "$(_cfg_get deployments $app)" == "*" ] || [ "$(_cfg_get deployments $app $ENV)" != "" ]; then
+			echo $app;
+		fi
+	done
 }
 
-__do() {
-	local fn="$1"
-	local app="$2"
-	local server; server="$(_cfg_get_server $app $ENV)"
-	local shell; shell="$(_cfg_get_shell "$server")"
-
-#	if [ -f "$ROOT/apps/$app/$fn.sh" ]; then
-#		source "$ROOT/apps/$app/$fn.sh"
-#	fi
-
-	case "$fn" in
-		"version-at" )
-			$shell <<-EOF
-				docker ps --format='{{ .Names }}\t{{ .Image }}' | grep "$NAMESPACE-$app-$ENV" | awk -F ":" '{print \$NF}'
-			EOF
-		;;
-		"logs" )
-			$shell <<-EOF
-				docker logs --tail=100 --follow "$NAMESPACE-$app-$ENV"
-			EOF
-		;;
-	esac
+## List all deployments for the specified app.
+deployments() {
+	$JQ -r '(.deployments["'"$1"'"]|keys)[] ' < $CONFIG_JSON
 }
 
-version-at() {
-	__do version-at $@
-}
-
-logs() {
-	__do logs $@
-}
-
+## * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
 _prelude;
-
-# Trick to autocomplete envs; typing env name will select it.
-for e in $ENV_NAMES; do
-	eval "$e() {
-		env $e;
-	}"
-done;
