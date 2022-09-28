@@ -117,7 +117,7 @@ Generally speaking, installing an app will follow these steps:
    `$resources` (pointing to the app's resources directory, if it exists) and whatever
    variables are exported by the `vars.sh` file. The `build_vars` variable is used
    to indicate to the install script which variables can be propagated to the install
-   script. 
+   script. See the 'Variables' section below for the available variables.
 5. If there are resources and/or artifacts, an SSH connection to the relevant server
    is opened and files are rsync'd to `~/$app/$ENV/resources` and `~/$app/$ENV/artifacts`
    respectively. The variables `$resources` and `$artifacts` pointing to the remote
@@ -127,9 +127,25 @@ Generally speaking, installing an app will follow these steps:
 7. The newly generated env-specific install script is fed to a shell opened on
    the SSH server, or executed by the local shell if the deployment indicates such.
 
+### Variables
+The following variables are available to all build and install scripts:
+
+- `$ENV` - The current target environment. This is the app's deployment environment, e.g. 'production'.
+- `$NAMESPACE` - The project's namespace, useful for prefixing. This is declared in project.sh
+- `$app` - The name of the app that is currently being installed.
+- `$server` - The server name that is used for deployment.
+- `$resources` - a full path to the resources directory of the app. In `build.sh` this refers to the 
+   local directory; in `install.sh` this refers to the rsync'd remote. Note that it remains empty if no 
+   `build.sh` exists.
+- `$artifacts` - a full path to the artifacts directory for the current environment of the app. The path
+  handling difference between `build.sh` and `install.sh` locally and remotely is the same as for resources.
+
+All variables exported from the `build_vars` variable are expanded too. Note that this variable can be
+amended on a per-app per-deployment basis in the `vars.sh` file.
+
 ### Debugging
-While creating new apps, it is advisable to enable debugging at level 2 as long
-as the script is still in development:
+While creating new apps, it is advisable to enable debugging at level 2 or higher
+as long as the script is still in development:
 
 ```
 DEBUG=2 ./install.sh testing mysql redis
@@ -137,7 +153,13 @@ DEBUG=2 ./install.sh testing mysql redis
 
 This will ultimately print the script that would otherwise be executed on
 the configured server. `DEBUG=1` will only output a lot of tracing information
-but will do the ultimate installation on the remote,
+but will do the ultimate installation on the remote.
+
+DEBUG=3 will print the resulting installation script using `envsubst` which
+tries to expand as much of the variables in the script as possible. This is
+useful to easily spot escape and/or quoting errors. Note that this isn't 
+exactly the way bash works, so it should only be used as a means of debugging
+and inspection.
 
 ### Application-specifics
 

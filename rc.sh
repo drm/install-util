@@ -13,7 +13,7 @@ _prelude() {
 	fi
 	export DEFAULT_ENV="${DEFAULT_ENV:-development}"
 	export PS1="$NAMESPACE [\$ENV] "
-	export PS4="+ \033[0;37m[debug]\033[0m"' $(date +"%Y-%m-%dT%H:%M:%S.%N") $SHLVL $BASH_SUBSHELL ${BASH_SOURCE:-1}:${LINENO:-} ${FUNCNAME[0]:-main}() - '
+	export PS4="+ \033[0;37m[debug]\033[0m"' $(date +"%Y-%m-%dT%H:%M:%S.%N") ${BASH_SOURCE:-1}:${LINENO:-} ${FUNCNAME[0]:-main}() - '
 	export DEBUG="${DEBUG:-0}"
 	export ENV="${ENV:-$DEFAULT_ENV}"
 	export HISTFILE="$ROOT/shell_history"
@@ -45,7 +45,9 @@ _assert_not_empty() {
 
 ## Check the prerequisites for using this script
 _check_prereq() {
-	[ "$JQ" == "" ] && _fail "jq is not found in the PATH..."
+	[ "$JQ" == "" ] && _fail "'jq' is not found in the PATH..."
+	[ "$SSH" == "" ] && _fail "'ssh' is not found in the PATH..."
+	[ "$RSYNC" == "" ] && _fail "'rsync' is not found in the PATH..."
 	! [ -f "$CONFIG_JSON" ] && _fail "$CONFIG_JSON is not a file..."
 	return 0
 }
@@ -177,7 +179,7 @@ install() {
 		fi
 
 		if [ "$server" != "local" ]; then
-			local remote_pwd; remote_pwd="$($shell -c 'pwd')"
+			local remote_pwd; remote_pwd="$($shell <<< 'pwd')"
 			for subdir in resources artifacts; do
 				local local_dir="${!subdir}"
 				local remote_dir="$remote_pwd/$app/$ENV/$subdir"
@@ -213,18 +215,17 @@ install() {
 					fi
 				EOF
 				) \
-				<(if [ "$(_cfg_get networks $ENV)" != "" ]; then
-					cat <<-EOF
-					EOF
-				else
-					echo "# No network configured for env $ENV";
-				fi
-				) \
 				<(for var in $build_vars; do echo $var='"'${!var:-}'"'; done ) \
 				$ROOT/apps/$app/install.sh
 			)
 
-		if [ "$DEBUG" -gt 1 ]; then
+		if [ "$DEBUG" -gt 2 ]; then
+			# These exports are necessary for envsubst to work.
+			for var in $build_vars; do
+				export "${var?}";
+			done;
+			shell="envsubst"
+		elif [ "$DEBUG" -gt 1 ]; then
 			shell="cat"
 		fi
 		$shell < $script;
