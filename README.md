@@ -70,7 +70,7 @@ file to avoid needless reconnecting during installation/deployment:
 ```
 Host *
   ControlMaster auto
-  ControlPath=/tmp/zorgverkeer-%C
+  ControlPath=/tmp/project-%C
   ControlPersist 300
   ServerAliveInterval 10
 ```
