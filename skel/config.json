@@ -1,0 +1,27 @@
+{
+	"deployments": {
+		"host": "*",
+		"cron": "*",
+		"APP": {
+			"ENV": "SERVER"
+		}
+	},
+	"networks": {
+		"ENV": "172.28.4"
+	},
+	"suffix": {
+		"APP": 3
+	},
+	"vpn": {
+		"ENV": {
+			"subnet": "10.0.11",
+			"nodes": {
+				"SERVER-NAME": {
+					"suffix": "1",
+					"server": "SERVER",
+					"ip": "IP"
+				}
+			}
+		}
+	}
+}
