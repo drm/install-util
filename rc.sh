@@ -18,14 +18,17 @@ _prelude() {
 	export ENV="${ENV:-$DEFAULT_ENV}"
 	export HISTFILE="$ROOT/shell_history"
 	export FORCE="${FORCE:-}"
-	export CONFIG_JSON="$ROOT/config.json"
+	export CONFIG_DB="$ROOT/config.db"
 	export PAGER="${PAGER:-$(which less)}"
 
-	export JQ="$(which jq)"
+	# In the future, for portability we might rather configure a command line to use mysql, psql or something else
+	export SQLITE="$(which sqlite3)"
 	export SSH="$(which ssh)"
 	export RSYNC="$(which rsync)"
 
-	_check_prereq
+	if [ "${SKIP_PREREQ_CHECK:-}" == "" ]; then
+		_check_prereq
+	fi
 
 	if [ "${INTERACTIVE:-}" == "1" ]; then
 		cat "$ROOT/resources/doc/header.md";
@@ -45,35 +48,32 @@ _assert_not_empty() {
 
 ## Check the prerequisites for using this script
 _check_prereq() {
-	[ "$JQ" == "" ] && _fail "'jq' is not found in the PATH..."
+	[ "$SQLITE" == "" ] && _fail "'sqlite3' is not found in the PATH..."
 	[ "$SSH" == "" ] && _fail "'ssh' is not found in the PATH..."
 	[ "$RSYNC" == "" ] && _fail "'rsync' is not found in the PATH..."
-	! [ -f "$CONFIG_JSON" ] && _fail "$CONFIG_JSON is not a file..."
+	! [ -f "$CONFIG_DB" ] && _fail "$CONFIG_DB is not a file..."
 	return 0
 }
 
-## Call jq, building a path based on the passed arguments;
-## e.g. `_jq a b c` would fetch the value `.a["b"]["c"]`
-_jq() {
-	local root="$1"
-	shift;
-	local path; path=".${root}$(for a in $@; do echo -n "[\"${a}\"]"; done)"
-	local val; val="$("$JQ" -e -r "$path" < $CONFIG_JSON)"
-	if [ "$val" == "null" ]; then
-		echo "";
+_query() {
+	if [ "$#" -lt 1 ]; then
+		cat - | $SQLITE -bail $CONFIG_DB
 	else
-		echo "$val";
-	fi;
+		$SQLITE -bail $CONFIG_DB <<<"$1"
+	fi
+}
+
+_cfg_get_ip() {
+	local env="$1"
+	local app="$2"
+	_query "SELECT (ip_prefix || '.' || ip_suffix) FROM deployment INNER JOIN app ON app_name=app.name WHERE app_name='$env' AND env_name='$env'";
 }
 
 ## Get a config value from config.json, based on the same
 ## principle as _jq, but warn if the value is empty.
 _cfg_get() {
-	local val; val="$(_jq "$@")"
-	if [ "$DEBUG" -gt 0 ] && [ "$val" == "" ]; then
-		echo "JQ return value is empty for $@" >&2
-	fi
-	echo "$val";
+	echo "cfg_get needs to be stubbed"
+	exit 1;
 }
 
 ## Get the server for the passed $app and $ENV,
@@ -81,24 +81,17 @@ _cfg_get() {
 _cfg_get_server() {
 	local app="$1"
 	local ENV="$2"
-	if [ "$(_cfg_get deployments $app)" == "*" ]; then
-		server="$ENV"
-	else
-		server="$(_cfg_get deployments $app $ENV)"
-		if [ "$server" == "" ]; then
-			_fail "No deployment configured for $app on $ENV"
-		fi
-	fi
-	echo "$server"
+	_query "SELECT server_name FROM deployment WHERE app_name='${app}' AND env_name='{$env}'"
 }
 
 ## Get the ssh prefix for the specified server. Will return empty string
 ## if the server is 'local'.
 _cfg_get_ssh_prefix() {
 	local server="$1"
+	local ssh; ssh=$(_query "SELECT ssh FROM server WHERE name='${server}'");
 	local opts="${2:-}"
-	if [ "$server" != "local" ]; then
-		echo "ssh $opts $server "
+	if [ "$ssh" != "" ]; then
+		echo "ssh $opts $ssh "
 	fi
 }
 
@@ -248,7 +241,7 @@ apps() {
 
 ## List all deployments for the specified app.
 deployments() {
-	$JQ -r '(.deployments["'"$1"'"]|keys)[] ' < $CONFIG_JSON
+	_query "SELECT * FROM deployment"
 }
 
 ## * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
