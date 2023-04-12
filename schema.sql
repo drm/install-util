@@ -14,6 +14,9 @@ CREATE TABLE env(
 
 CREATE TABLE server(
     name text,
+    ssh text,
+    hostname text,
+    ip text,
 
     primary key(name)
 );
@@ -30,3 +33,16 @@ CREATE TABLE deployment(
 
 	primary key(app_name, env_name, server_name)
 );
+
+CREATE VIEW vw_app AS
+SELECT
+    app_name,
+    server_name,
+    env_name,
+   (env.ip_prefix || '.' || app.ip_suffix) ip
+FROM
+    deployment
+        INNER JOIN app ON app_name=app.name
+        INNER JOIN server ON server_name=server.name
+        INNER JOIN env ON env_name=env.name
+;

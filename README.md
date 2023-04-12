@@ -1,3 +1,4 @@
+
 # Install Utility
 This repository provides a bash/ssh-based utility for practically scaffolding
 a provisioning and/or deployment configuration.
@@ -46,7 +47,7 @@ more applications directly:
 ./install.sh testing mysql redis
 ```
 
-### `config.json`
+### `config.db`
 The only required section required in config.json is `deployments`. This
 specifies which ssh server connection should be used for what app. If the
 environment is identical to the server name, it can be specified as "*":
@@ -253,14 +254,7 @@ a default value. It's best to declare these as early as possible:
 my_var="${my_var:-"the default value"}"
 ```
 
-### Using the config.json
-The `jq` tool is used to read values from the config. It is up to you to
-structure the config any way you like, except for the `deployments` section.
-
-Accessing values that are non-existent is not necessarily considered an error.
-This means that you need to do your own error checking, for example:
-
-```
-local ip; ip="$(_cfg_get ip $app)"
-! test -z $ip;
-```
+### Using sqlite for (custom) configurations
+The database is accessible through the `_query` function. Of course it's
+up to you to add to the database whatever you want or need, as long as
+you keep the basic structure for the base table intact.

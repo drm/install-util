@@ -21,6 +21,7 @@ if ! [ -f "$1" ]; then
 fi
 
 gen_sql() {
+	echo "PRAGMA foreign_keys = ON;"
 	cat $ROOT/schema.sql;
 
 	jq -r '(.deployments | keys)[]' < $file | while read app_name; do
@@ -29,6 +30,7 @@ gen_sql() {
 			jq -r '(.deployments["'$app_name'"])|keys[]' < $file | while read env_name; do
 				echo "INSERT INTO env(name) VALUES('$env_name') ON CONFLICT DO NOTHING;"
 				server_name="$(jq -r '(.deployments["'$app_name'"]["'$env_name'"])' < $file)"
+				echo "INSERT INTO server(name) VALUES('${server_name}') ON CONFLICT DO NOTHING;";
 				echo "INSERT INTO deployment(app_name, env_name, server_name) VALUES('$app_name', '$env_name', '$server_name');"
 			done;
 		fi
@@ -41,6 +43,19 @@ gen_sql() {
 		ip_suffix="$(jq -r '(.suffix["'$app_name'"])' < $file)"
 		echo "UPDATE app SET ip_suffix='$ip_suffix' WHERE name='$app_name';"
 	done;
+
+	awk '{
+		if(/Host /) { host=$2 }
+		if(/HostName /) { hosts[host]=$2; }
+		if(/User /) { users[host]=$2; }
+	}
+	END {
+		for (key in hosts) {
+			printf "UPDATE server SET ssh=\"%s@%s\" WHERE name=\"%s\";\n", users[key], hosts[key], key
+			printf "UPDATE server SET hostname=\"%s\" WHERE name=\"%s\";\n", hosts[key], key
+		}
+	}' < $ROOT/../ssh/config
 }
 
-gen_sql | sqlite3 $target
+gen_sql | $SQLITE -echo -bail $target
+
