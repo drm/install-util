@@ -1,8 +1,7 @@
-set -euo pipefail
 
 ## Called at the end of this file to initialize the environment
 _prelude() {
-	[ "${DEBUG:-0}" -gt 0 ] && set -x
+	[ "${DEBUG:-0}" -gt 2 ] && set -x
 
 	if [ "${ROOT:-}" == "" ]; then
 		echo "Missing ROOT. See README.md for details."
@@ -20,11 +19,16 @@ _prelude() {
 	export FORCE="${FORCE:-}"
 	export CONFIG_DB="$ROOT/config.db"
 	export PAGER="${PAGER:-$(which less)}"
+	export INSTALL_SCRIPT_NAMES="install status"
 
 	# In the future, for portability we might rather configure a command line to use mysql, psql or something else
 	export SQLITE="$(which sqlite3)"
 	export SSH="$(which ssh)"
 	export RSYNC="$(which rsync)"
+	export SHOWSOURCE="$(which batcat)"
+	if [ "$SHOWSOURCE" == "" ]; then
+		export SHOWSOURCE="cat";
+	fi
 
 	if [ "${SKIP_PREREQ_CHECK:-}" == "" ]; then
 		_check_prereq
@@ -56,60 +60,43 @@ _check_prereq() {
 }
 
 _query() {
-	if [ "$#" -lt 1 ]; then
-		cat - | $SQLITE -bail $CONFIG_DB
-	else
-		$SQLITE -bail $CONFIG_DB <<<"$1"
-	fi
+	cat - | $SQLITE -bail "$@" $CONFIG_DB
 }
 
 _cfg_get_ip() {
 	local env="$1"
 	local app="$2"
-	_query "SELECT (ip_prefix || '.' || ip_suffix) FROM deployment INNER JOIN app ON app_name=app.name WHERE app_name='$env' AND env_name='$env'";
-}
-
-## Get a config value from config.json, based on the same
-## principle as _jq, but warn if the value is empty.
-_cfg_get() {
-	echo "cfg_get needs to be stubbed"
-	exit 1;
+	_query <<<"SELECT ip FROM vw_app WHERE app_name='$app' AND env_name='$env'"
 }
 
 ## Get the server for the passed $app and $ENV,
 ## e.g. `_cfg_get_server postgres production`
 _cfg_get_server() {
 	local app="$1"
-	local ENV="$2"
-	_query "SELECT server_name FROM deployment WHERE app_name='${app}' AND env_name='{$env}'"
+	local env="$2"
+	_query <<<"SELECT server_name FROM deployment WHERE app_name='${app}' AND env_name='${env}'"
 }
 
-## Get the ssh prefix for the specified server. Will return empty string
-## if the server is 'local'.
+## Get the ssh name for the specified app and environment
+_cfg_get_ssh() {
+	_query <<<"SELECT ssh FROM server INNER JOIN deployment ON server_name=server.name WHERE app_name='${1}' AND env_name='${2}'"
+}
+
+## Get the ssh prefix for the specified app and environment. Will return empty string
+## if no ssh is configured
 _cfg_get_ssh_prefix() {
-	local server="$1"
-	local ssh; ssh=$(_query "SELECT ssh FROM server WHERE name='${server}'");
-	local opts="${2:-}"
+	local ssh; ssh=$(_query <<<"SELECT ssh FROM server INNER JOIN deployment ON server_name=server.name WHERE app_name='${1}' AND env_name='${2}'");
+	shift 2;
 	if [ "$ssh" != "" ]; then
-		echo "ssh $opts $ssh "
+		echo "$SSH" -F "$ROOT/ssh/config $@ $ssh "
 	fi
 }
 
 ## Get the shell for the specified deployment; i.e. prefix /bin/bash
-## with the ssh prefix, if any. Supports two modes:
-## single argument: _cfg_get_shell SERVER
-## two arguments: _cfg_get_shell APP ENV
+## with the ssh prefix, if any.
 _cfg_get_shell() {
-	local server;
-	if [ "$#" -eq 2 ]; then
-		local app="$1"
-		local env="$2"
-		server="$(_cfg_get_server $1 $2)"
-	elif [ "$#" -eq 1 ]; then
-		server="$1"
-	fi
 	local shell="/bin/bash"
-	echo "$(_cfg_get_ssh_prefix "$server")$shell"
+	echo "$(_cfg_get_ssh_prefix "$1" "$2")$shell"
 }
 
 ## Wrapper for 'ssh' to use the project ssh config.
@@ -146,17 +133,22 @@ vars() {
 
 ## Perform deployment for all specified arguments.
 install() {
-	for app in $@; do
+	for app in "$@"; do
+		if [ "$(_query <<<"SELECT COUNT(1) FROM deployment WHERE app_name='$app' AND env_name='$ENV'")" != "1" ]; then
+			echo "No deployment for $app on $ENV"
+			false;
+		fi
+
 		if ! [ -f "$ROOT/apps/$app/install.sh" ]; then
 			echo "Missing installation script $ROOT/apps/$app/install.sh"
 			false;
 		fi
 	done
 
-	for app in $@; do
+	for app in "$@"; do
 		local build_vars="ENV NAMESPACE VERSION artifacts resources app server"
-		local server; server="$(_cfg_get_server $app $ENV)"
-		local shell; shell="$(_cfg_get_shell $server)"
+		local ssh; ssh="$(_cfg_get_ssh $app $ENV)"
+		local shell; shell="$(_cfg_get_shell $app $ENV)"
 
 		source $ROOT/vars.sh
 
@@ -164,64 +156,126 @@ install() {
 			local $subdir="$ROOT/apps/$app/$subdir/"
 		done
 		artifacts="$artifacts/$ENV"
+		rm -rf $artifacts;
 		mkdir -p $artifacts
 		local build_script="$ROOT/apps/$app/build.sh"
 		if [ -f "$build_script" ]; then
-			echo "Calling build script: $build_script"
+			[ "$DEBUG" -eq 0 ] || echo "Calling build script: $build_script"
 			source "$build_script"
 		fi
 
-		if [ "$server" != "local" ]; then
-			local remote_pwd; remote_pwd="$($shell <<< 'pwd')"
-			for subdir in resources artifacts; do
-				local local_dir="${!subdir}"
-				local remote_dir="$remote_pwd/$app/$ENV/$subdir"
-				if [ -d "$local_dir" ] && [ "$(find $local_dir -type f | wc -l)" -gt 0 ]; then
-					echo "Syncing $subdir"
-					rsync_opts="-v"
-					if [ "$DEBUG" -ge 2 ]; then
-						rsync_opts="$rsync_opts -n"
+		local remote_pwd; remote_pwd="$($shell <<< 'pwd')"
+		for script_name in $INSTALL_SCRIPT_NAMES; do
+			local script="$artifacts/$script_name.sh"
+			[ "$DEBUG" -eq 0 ] || echo "Building script: $script"
+
+			if [ -f "$ROOT/apps/$app/$script_name.sh" ]; then
+				# subshell to scope 'artifacts' and 'resources' variables remotely different from locally.
+				(
+					for subdir in resources artifacts; do
+						local $subdir="$remote_pwd/$app/$ENV/$subdir"
+					done
+					cat \
+						> $script \
+						<(cat \
+							<(cat <<-EOF
+								#!/usr/bin/env bash
+								set -euo pipefail
+								if [ "$DEBUG" -gt 0 ]; then
+									set -x
+								fi
+							EOF
+							) \
+							<(for var in $build_vars; do echo $var='"'${!var:-}'"'; done ) \
+							$ROOT/apps/$app/$script_name.sh
+						)
+					chmod +x $script;
+				)
+			fi
+		done
+
+		if [ "$DEBUG" -ge 1 ]; then
+			PS3="How do you wish to proceed? "
+			select x in "Show script" "Show diff" "Continue install [on $shell]" "Exit"; do
+				echo $x;
+				case "$REPLY" in
+					1)
+						for script_name in $INSTALL_SCRIPT_NAMES; do
+							if [ -f "$artifacts/$script_name.sh" ]; then
+								$SHOWSOURCE $artifacts/$script_name.sh;
+							fi
+						done;
+					;;
+					2)
+						for subdir in resources artifacts; do
+							local local_dir="${!subdir}"
+							local remote_dir="$remote_pwd/$app/$ENV/$subdir"
+
+							if [ -d "$local_dir" ]; then
+								# subshell to keep cwd
+								(
+									cd $local_dir;
+									find ./ -type f | while read f; do
+										f="${f:2}"
+										diff -s <($shell <<< "cat $remote_dir/$f") $local_dir/$f || true
+									done;
+								)
+							fi;
+						done
+					;;
+					3)
+						break
+					;;
+					4) exit; ;;
+					*) echo "Invalid selection. Please retry."; ;;
+				esac
+				# resets the prompt
+				REPLY=
+			done;
+			echo "$REPLY";
+			if [ "$REPLY" == "" ]; then
+				exit;
+			fi
+		fi;
+
+		for subdir in resources artifacts; do
+			local local_dir="${!subdir}"
+			local remote_dir="$remote_pwd/$app/$ENV/$subdir"
+
+			if [ -d "$local_dir" ] && [ "$(find $local_dir -type f | wc -l)" -gt 0 ]; then
+				rsync_opts=""
+				if [ "$DEBUG" -ge 2 ]; then
+					rsync_opts="$rsync_opts -nv"
+				fi
+				if [ "$DEBUG" -lt 2 ]; then
+					if [ "$DEBUG" -lt 1 ]; then
+						$shell <<<"mkdir -p \"$remote_dir\""
+					else
+						$shell <<<"mkdir -pv \"$remote_dir\""
 					fi
-					if [ "$DEBUG" -lt 2 ]; then
-						$shell <<-EOF
-							mkdir -pv "$remote_dir"
-						EOF
-					fi
-					rsync -prL $rsync_opts $local_dir/ "$server:$remote_dir/"
-					local $subdir="$remote_dir"
+				fi
+				if [ "$ssh" != "" ]; then
+					rsync -prL $rsync_opts "$local_dir/" "$ssh:$remote_dir/"
 				else
-					local $subdir=""
+					rsync -prL $rsync_opts "$local_dir/" "$remote_dir/"
+				fi
+			fi
+		done;
+		if [ "$DEBUG" -lt 2 ]; then
+			for script_name in $INSTALL_SCRIPT_NAMES; do
+				if [ -f "$artifacts/$script_name.sh" ]; then
+					(
+						for subdir in resources artifacts; do
+							local $subdir="$remote_pwd/$app/$ENV/$subdir"
+						done
+
+						$shell <<< "$artifacts/$script_name.sh";
+					)
 				fi
 			done;
+		else
+			echo "Skipping install, DEBUG is set to ${DEBUG}, and script will not run with DEBUG at a value higher than 1" ;
 		fi
-		local script="$ROOT/apps/$app/artifacts/$ENV.sh"
-		echo "Building script: $script"
-
-		cat \
-			> $script \
-			<(cat \
-				<(cat <<-EOF
-					#!/usr/bin/env bash
-					set -euo pipefail
-					if [ "$DEBUG" -gt 0 ]; then
-						set -x
-					fi
-				EOF
-				) \
-				<(for var in $build_vars; do echo $var='"'${!var:-}'"'; done ) \
-				$ROOT/apps/$app/install.sh
-			)
-
-		if [ "$DEBUG" -gt 2 ]; then
-			# These exports are necessary for envsubst to work.
-			for var in $build_vars; do
-				export "${var?}";
-			done;
-			shell="envsubst"
-		elif [ "$DEBUG" -gt 1 ]; then
-			shell="cat"
-		fi
-		$shell < $script;
 	done;
 }
 
@@ -232,17 +286,43 @@ help() {
 
 ## List all apps.
 apps() {
-	for app in $($JQ -r '(.deployments|keys)[] ' < $CONFIG_JSON); do
-		if [ "$(_cfg_get deployments $app)" == "*" ] || [ "$(_cfg_get deployments $app $ENV)" != "" ]; then
-			echo $app;
-		fi
-	done
+	_query -box <<<"SELECT * FROM app";
 }
 
 ## List all deployments for the specified app.
 deployments() {
-	_query "SELECT * FROM deployment"
+	local where="true";
+	if [ "${1:-}" != "" ]; then
+		where="app_name='$1'"
+	fi
+	_query -box <<<"SELECT app_name, env_name, server_name, ssh FROM deployment INNER JOIN server ON server_name=server.name WHERE $where";
 }
+
+## Refresh all server's ip's
+refresh_dns() {
+	_query <<<"SELECT name, hostname FROM server WHERE hostname IS NOT NULL" | while IFS="|" read name hostname; do
+		echo "UPDATE server SET ip='$(dig +short $hostname | tail -1)' WHERE name='$name';"
+	done | _query;
+}
+
+## Verify configurations
+verify() {
+	local app;
+	local d;
+	_query <<< "SELECT ssh FROM server WHERE ssh IS NOT NULL" | while read s; do
+		ssh -n $s echo "Hello from $s";
+	done;
+	for d in $ROOT/apps/*; do
+		app="$(basename "$d")"
+		echo "App '${app}' is configured in db: $(_query <<<"SELECT CASE WHEN COUNT(1) > 0 THEN 'YES' ELSE 'NO' END FROM app WHERE name='${app}'")";
+	done
+	_query <<< "SELECT app_name, env_name FROM deployment" | while IFS="|" read app_name env_name; do
+		shell="$(_cfg_get_shell $app_name $env_name)"
+		$shell <<<"echo 'Hello from $shell'";
+		DEBUG=9 install $app_name $env_name
+	done;
+}
+
 
 ## * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
 _prelude;
