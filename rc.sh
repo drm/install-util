@@ -126,14 +126,14 @@ vars() {
 ## Perform deployment for all specified arguments.
 install() {
 	for app in "$@"; do
-		if [ "$(_query <<<"SELECT COUNT(1) FROM deployment WHERE app_name='$app' AND env_name='$ENV'")" != "1" ]; then
-			echo "No deployment for $app on $ENV"
-			false;
+		if [ "$(_query <<<"SELECT COUNT(1) FROM app WHERE name='$app'")" != "1" ]; then
+			_fail "Invalid app name $app. Valid app names are: $(_query <<< "SELECT GROUP_CONCAT(DISTINCT app_name) FROM deployment")"
 		fi
-
+		if [ "$(_query <<<"SELECT COUNT(1) FROM deployment WHERE app_name='$app' AND env_name='$ENV'")" != "1" ]; then
+			_fail "No deployment for $app on $ENV. Valid deployments for $app are: $(_query <<< "SELECT env_name FROM deployment WHERE app_name='$app'")"
+		fi
 		if ! [ -f "$ROOT/apps/$app/install.sh" ]; then
-			echo "Missing installation script $ROOT/apps/$app/install.sh"
-			false;
+			_fail "Missing installation script $ROOT/apps/$app/install.sh"
 		fi
 	done
 
