@@ -69,14 +69,6 @@ _cfg_get_ip() {
 	_query <<<"SELECT ip FROM vw_app WHERE app_name='$app' AND env_name='$env'"
 }
 
-## Get the server for the passed $app and $ENV,
-## e.g. `_cfg_get_server postgres production`
-_cfg_get_server() {
-	local app="$1"
-	local env="$2"
-	_query <<<"SELECT server_name FROM deployment WHERE app_name='${app}' AND env_name='${env}'"
-}
-
 ## Get the ssh name for the specified app and environment
 _cfg_get_ssh() {
 	_query <<<"SELECT ssh FROM server INNER JOIN deployment ON server_name=server.name WHERE app_name='${1}' AND env_name='${2}'"
@@ -85,9 +77,9 @@ _cfg_get_ssh() {
 ## Get the ssh prefix for the specified app and environment. Will return empty string
 ## if no ssh is configured
 _cfg_get_ssh_prefix() {
-	local ssh; ssh=$(_query <<<"SELECT ssh FROM server INNER JOIN deployment ON server_name=server.name WHERE app_name='${1}' AND env_name='${2}'");
-	shift 2;
+	local ssh; ssh=$(_cfg_get_ssh "$1" "$2");
 	if [ "$ssh" != "" ]; then
+		shift 2;
 		echo "$SSH" -F "$ROOT/ssh/config $@ $ssh "
 	fi
 }
