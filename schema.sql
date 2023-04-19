@@ -1,18 +1,18 @@
-CREATE TABLE app(
+CREATE TABLE IF NOT EXISTS app(
 	name text,
 	ip_suffix text,
 
 	primary key(name)
 );
 
-CREATE TABLE env(
+CREATE TABLE IF NOT EXISTS env(
 	name text,
 	ip_prefix text,
 
 	primary key(name)
 );
 
-CREATE TABLE server(
+CREATE TABLE IF NOT EXISTS server(
 	name text,
 	ssh text,
 	hostname text,
@@ -21,8 +21,16 @@ CREATE TABLE server(
 	primary key(name)
 );
 
+CREATE TABLE IF NOT EXISTS ssh_key(
+	server_name text,
+	type text,
+	key text,
+	comment text,
 
-CREATE TABLE deployment(
+	primary key(server_name, key)
+);
+
+CREATE TABLE IF NOT EXISTS deployment(
 	app_name text,
 	env_name text,
 	server_name text,
@@ -34,6 +42,7 @@ CREATE TABLE deployment(
 	primary key(app_name, env_name, server_name)
 );
 
+DROP VIEW IF EXISTS vw_app;
 CREATE VIEW vw_app AS
 SELECT
 	app_name,

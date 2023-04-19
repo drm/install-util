@@ -1,9 +1,0 @@
-Host *
-  ControlMaster auto
-  ControlPath=/tmp/NAMESPACE-%C
-  ControlPersist 300
-  ServerAliveInterval 10
-
-Host test
-  HostName test.example.org
-  User root

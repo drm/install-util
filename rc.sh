@@ -63,6 +63,16 @@ _query() {
 	cat - | $SQLITE -bail "$@" $CONFIG_DB
 }
 
+_confirm() {
+	local response;
+	read -p "$1" response < /dev/tty
+	if [ "$response" == "y" ] || [ "$response" == "Y" ]; then
+		return 0
+	else
+		return 1;
+	fi;
+}
+
 _cfg_get_ip() {
 	local env="$1"
 	local app="$2"
@@ -313,6 +323,49 @@ verify() {
 		$shell <<<"echo 'Hello from $shell'";
 		DEBUG=9 install $app_name $env_name
 	done;
+}
+
+## Exchange SSH keys
+fetch_keys() {
+	_query <<< "SELECT name, ssh FROM server WHERE ssh IS NOT NULL" | while IFS="|" read server_name ssh; do
+		echo "BEGIN;"
+		echo "DELETE FROM ssh_key WHERE server_name='$server_name';";
+		ssh "$ssh" /bin/bash <<< "cat ~/.ssh/authorized_keys" | sort | while IFS=" " read type key comment; do
+			cat <<-EOF
+				INSERT INTO
+					ssh_key(server_name, type, key, comment)
+				VALUES
+					('$server_name', '$type', '$key', '$comment');
+			EOF
+		done;
+		echo "COMMIT;"
+	done | _query;
+}
+
+push_keys() {
+	local where="ssh IS NOT NULL";
+	if [ "${1:-}" != "" ]; then
+		where="name='$1'";
+	fi
+	_query <<< "SELECT name, ssh FROM server WHERE $where" | while IFS="|" read server_name ssh; do
+		_query -separator ' ' <<< "SELECT type || ' ' || key || ' ' || comment FROM ssh_key WHERE server_name='$server_name'" \
+			| ssh "$ssh" cat \> \~/.ssh/authorized_keys.new
+
+		ssh $ssh /bin/bash <<-EOF | tee | read diff
+			diff <(sort ~/.ssh/authorized_keys) <(sort ~/.ssh/authorized_keys.new)
+		EOF
+
+		if [ "$diff" != "" ]; then
+			if _confirm "[$server_name] Continue applying changes? [y/N] "; then
+				ssh "$ssh" /bin/bash <<-EOF
+					VERSION_CONTROL="t" cp -v --backup ~/.ssh/authorized_keys.new ~/.ssh/authorized_keys
+					rm ~/.ssh/authorized_keys.new
+				EOF
+			fi
+		else
+			echo "[$server_name] No changes"
+		fi
+	done
 }
 
 
