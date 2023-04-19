@@ -325,7 +325,7 @@ verify() {
 	done;
 }
 
-## Exchange SSH keys
+## Download SSH keys from each server into local database.
 fetch_keys() {
 	_query <<< "SELECT name, ssh FROM server WHERE ssh IS NOT NULL" | while IFS="|" read server_name ssh; do
 		echo "BEGIN;"
@@ -339,9 +339,13 @@ fetch_keys() {
 			EOF
 		done;
 		echo "COMMIT;"
+		echo "SELECT '[$server_name] OK';";
 	done | _query;
 }
 
+## Upload SSH keys from each server into management database. Note that this
+## doesn't provide for any safety net regarding throwing away your own
+## key, except for a manual confirmation of the changes.
 push_keys() {
 	local where="ssh IS NOT NULL";
 	if [ "${1:-}" != "" ]; then
