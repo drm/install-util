@@ -60,7 +60,11 @@ _check_prereq() {
 }
 
 _query() {
-	cat - | $SQLITE -bail "$@" $CONFIG_DB
+	if [ "$DEBUG" -gt 0 ]; then
+		tee /dev/stderr
+	else
+		cat -
+	fi | $SQLITE -bail "$@" "$CONFIG_DB"
 }
 
 _confirm() {
@@ -351,20 +355,17 @@ push_keys() {
 	if [ "${1:-}" != "" ]; then
 		where="name='$1'";
 	fi
+	local new;
+	local diff;
 	_query <<< "SELECT name, ssh FROM server WHERE $where" | while IFS="|" read server_name ssh; do
-		_query -separator ' ' <<< "SELECT type || ' ' || key || ' ' || comment FROM ssh_key WHERE server_name='$server_name'" \
-			| ssh "$ssh" cat \> \~/.ssh/authorized_keys.new
-
-		ssh $ssh /bin/bash <<-EOF | tee | read diff
-			diff <(sort ~/.ssh/authorized_keys) <(sort ~/.ssh/authorized_keys.new)
-		EOF
-
+		new="$(mktemp)"
+		trap "rm -f '$new'" EXIT
+		_query <<< "SELECT type || ' ' || key || ' ' || comment FROM ssh_key WHERE server_name='$server_name'" | sort > "$new"
+		diff="$(diff <(ssh -n "$ssh" cat \~/.ssh/authorized_keys | sort) "$new" || true)"
 		if [ "$diff" != "" ]; then
+			echo "$diff";
 			if _confirm "[$server_name] Continue applying changes? [y/N] "; then
-				ssh "$ssh" /bin/bash <<-EOF
-					VERSION_CONTROL="t" cp -v --backup ~/.ssh/authorized_keys.new ~/.ssh/authorized_keys
-					rm ~/.ssh/authorized_keys.new
-				EOF
+				scp "$new" "$ssh":.ssh/authorized_keys
 			fi
 		else
 			echo "[$server_name] No changes"
