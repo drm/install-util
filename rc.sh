@@ -334,12 +334,13 @@ fetch_keys() {
 	_query <<< "SELECT name, ssh FROM server WHERE ssh IS NOT NULL" | while IFS="|" read server_name ssh; do
 		echo "BEGIN;"
 		echo "DELETE FROM ssh_key WHERE server_name='$server_name';";
-		ssh "$ssh" /bin/bash <<< "cat ~/.ssh/authorized_keys" | sort | while IFS=" " read type key comment; do
+		ssh "$ssh" /bin/bash <<< "cat ~/.ssh/authorized_keys" | sed 's/#.*//g' | awk NF | sort | while IFS=" " read type key comment; do
 			cat <<-EOF
 				INSERT INTO
 					ssh_key(server_name, type, key, comment)
 				VALUES
-					('$server_name', '$type', '$key', '$comment');
+					('$server_name', '$type', '$key', '$comment')
+				ON CONFLICT DO NOTHING;
 			EOF
 		done;
 		echo "COMMIT;"
