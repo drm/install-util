@@ -144,7 +144,7 @@ install() {
 			_fail "Invalid app name $app. Valid app names are: $(_query <<< "SELECT GROUP_CONCAT(DISTINCT app_name) FROM deployment")"
 		fi
 		if [ "$(_query <<<"SELECT COUNT(1) FROM deployment WHERE app_name='$app' AND env_name='$ENV'")" != "1" ]; then
-			_fail "No deployment for $app on $ENV. Valid deployments for $app are: $(_query <<< "SELECT env_name FROM deployment WHERE app_name='$app'")"
+			_fail "No deployment for $app on $ENV. Valid deployments for $app are: $(_query <<< "SELECT GROUP_CONCAT(env_name, ', ') FROM deployment WHERE app_name='$app'")"
 		fi
 		if ! [ -f "$ROOT/apps/$app/install.sh" ]; then
 			_fail "Missing installation script $ROOT/apps/$app/install.sh"
@@ -170,7 +170,9 @@ install() {
 			source "$build_script"
 		fi
 
-		local remote_pwd; remote_pwd="$($shell <<< 'pwd')"
+		local remote_pwd;
+		remote_pwd="$($shell <<< 'mkdir -p scripts && cd scripts && pwd')"
+
 		for script_name in $INSTALL_SCRIPT_NAMES; do
 			local script="$artifacts/$script_name.sh"
 			[ "$DEBUG" -eq 0 ] || echo "Building script: $script"
