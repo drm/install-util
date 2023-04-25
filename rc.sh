@@ -170,8 +170,8 @@ install() {
 			source "$build_script"
 		fi
 
-		local remote_pwd;
-		remote_pwd="$($shell <<< 'mkdir -p scripts && cd scripts && pwd')"
+		local remote_wd;
+		remote_wd="$($shell <<< 'mkdir -p scripts && cd scripts && pwd')"
 
 		for script_name in $INSTALL_SCRIPT_NAMES; do
 			local script="$artifacts/$script_name.sh"
@@ -181,7 +181,7 @@ install() {
 				# subshell to scope 'artifacts' and 'resources' variables remotely different from locally.
 				(
 					for subdir in resources artifacts; do
-						local $subdir="$remote_pwd/$app/$ENV/$subdir"
+						local $subdir="$remote_wd/$app/$ENV/$subdir"
 					done
 					cat \
 						> $script \
@@ -217,7 +217,7 @@ install() {
 					2)
 						for subdir in resources artifacts; do
 							local local_dir="${!subdir}"
-							local remote_dir="$remote_pwd/$app/$ENV/$subdir"
+							local remote_dir="$remote_wd/$app/$ENV/$subdir"
 
 							if [ -d "$local_dir" ]; then
 								# subshell to keep cwd
@@ -248,7 +248,7 @@ install() {
 
 		for subdir in resources artifacts; do
 			local local_dir="${!subdir}"
-			local remote_dir="$remote_pwd/$app/$ENV/$subdir"
+			local remote_dir="$remote_wd/$app/$ENV/$subdir"
 
 			if [ -d "$local_dir" ] && [ "$(find $local_dir -type f | wc -l)" -gt 0 ]; then
 				rsync_opts=""
@@ -274,7 +274,7 @@ install() {
 				if [ -f "$artifacts/$script_name.sh" ]; then
 					(
 						for subdir in resources artifacts; do
-							local $subdir="$remote_pwd/$app/$ENV/$subdir"
+							local $subdir="$remote_wd/$app/$ENV/$subdir"
 						done
 
 						$shell <<< "$artifacts/$script_name.sh";
