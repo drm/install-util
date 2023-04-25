@@ -64,7 +64,7 @@ _query() {
 		tee /dev/stderr
 	else
 		cat -
-	fi | $SQLITE -bail "$@" "$CONFIG_DB"
+	fi | $SQLITE -init /dev/null -bail "$@" "$CONFIG_DB"
 }
 
 _confirm() {
