@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS deployment(
 	foreign key(env_name) references env(name),
 	foreign key(server_name) references server(name),
 
-	primary key(app_name, env_name, server_name)
+	primary key(app_name, env_name)
 );
 
 DROP VIEW IF EXISTS vw_app;
