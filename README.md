@@ -48,23 +48,10 @@ more applications directly:
 ```
 
 ### `config.db`
-The only required section required in config.json is `deployments`. This
-specifies which ssh server connection should be used for what app. If the
-environment is identical to the server name, it can be specified as "*":
-
-```
-{
-    "deployments": {
-        "postgres": {
-            "prod": "root@example.org"
-        },
-	"deps": "*"
-    }
-}
-```
+TODO
 
 ### `ssh/config`
-This is a `ssh_config` file that may contain all servers used in the deployments
+This is a `ssh_config(5)` file that may contain all servers used in the deployments
 configuration. Also, it is advisable to add control socket configuration to this 
 file to avoid needless reconnecting during installation/deployment:
 
