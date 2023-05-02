@@ -3,7 +3,7 @@
 RCFILE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/rc.sh"
 RESTART="y"
 while [ "$RESTART" == "y" ]; do
-	( env -i ROOT="$ROOT" TERM="$TERM" INTERACTIVE=1 bash \
+	( env -i BASH="$BASH" ROOT="$ROOT" TERM="$TERM" INTERACTIVE=1 "$BASH" \
 		--rcfile "$RCFILE" \
 		-i )
 	status="$?"

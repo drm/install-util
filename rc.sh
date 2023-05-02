@@ -20,6 +20,13 @@ _prelude() {
 	export CONFIG_DB="$ROOT/config.db"
 	export PAGER="${PAGER:-$(which less)}"
 	export INSTALL_SCRIPT_NAMES="install status"
+	export BASH="${BASH:-/bin/bash}"
+
+	if [ "$($BASH --version | grep -o $BASH_VERSION)" != "$BASH_VERSION" ]; then
+		echo "$BASH reported different version than running version $BASH_VERSION" 2>&1
+		echo "This is not okay."
+		exit 7;
+	fi
 
 	# In the future, for portability we might rather configure a command line to use mysql, psql or something else
 	export SQLITE="$(which sqlite3)"
@@ -101,8 +108,12 @@ _cfg_get_ssh_prefix() {
 ## Get the shell for the specified deployment; i.e. prefix /bin/bash
 ## with the ssh prefix, if any.
 _cfg_get_shell() {
-	local shell="/bin/bash"
-	echo "$(_cfg_get_ssh_prefix "$1" "$2")$shell"
+	local prefix; prefix="$(_cfg_get_ssh_prefix "$1" "$2")"
+	if [ "$prefix" == "" ]; then
+		echo "$BASH"
+	else
+		echo "${prefix}/bin/bash"
+	fi
 }
 
 ## Wrapper for 'ssh' to use the project ssh config.
