@@ -22,12 +22,6 @@ _prelude() {
 	export INSTALL_SCRIPT_NAMES="install status"
 	export BASH="${BASH:-/bin/bash}"
 
-	if [ "$($BASH --version | grep -o $BASH_VERSION)" != "$BASH_VERSION" ]; then
-		echo "$BASH reported different version than running version $BASH_VERSION" 2>&1
-		echo "This is not okay."
-		exit 7;
-	fi
-
 	# In the future, for portability we might rather configure a command line to use mysql, psql or something else
 	export SQLITE="$(which sqlite3)"
 	export SSH="$(which ssh)"
