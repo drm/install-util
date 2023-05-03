@@ -19,7 +19,7 @@ _prelude() {
 	export FORCE="${FORCE:-}"
 	export CONFIG_DB="$ROOT/config.db"
 	export PAGER="${PAGER:-$(which less)}"
-	export INSTALL_SCRIPT_NAMES="install status"
+	export INSTALL_SCRIPT_NAMES="${INSTALL_SCRIPT_NAMES:-install status}"
 	export BASH="${BASH:-/bin/bash}"
 
 	# In the future, for portability we might rather configure a command line to use mysql, psql or something else
