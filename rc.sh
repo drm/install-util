@@ -10,11 +10,9 @@ _prelude() {
 	if [ -f "$ROOT/project.sh" ]; then
 		source $ROOT/project.sh
 	fi
-	export DEFAULT_ENV="${DEFAULT_ENV:-development}"
 	export PS1="$NAMESPACE [\$ENV] "
 	export PS4="+ \033[0;37m[debug]\033[0m"' $(date +"%Y-%m-%dT%H:%M:%S.%N") ${BASH_SOURCE:-1}:${LINENO:-} ${FUNCNAME[0]:-main}() - '
 	export DEBUG="${DEBUG:-0}"
-	export ENV="${ENV:-$DEFAULT_ENV}"
 	export HISTFILE="$ROOT/shell_history"
 	export FORCE="${FORCE:-}"
 	export CONFIG_DB="$ROOT/config.db"
