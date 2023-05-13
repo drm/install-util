@@ -25,7 +25,9 @@ _prelude() {
 	export SSH="$(which ssh)"
 	export RSYNC="$(which rsync)"
 	export SHOWSOURCE="$(which batcat)"
-	if [ "$SHOWSOURCE" == "" ]; then
+	if [ "$SHOWSOURCE" != "" ]; then
+		SHOWSOURCE="$SHOWSOURCE --wrap never --style=grid,header,numbers"
+	else
 		export SHOWSOURCE="cat";
 	fi
 
@@ -177,8 +179,9 @@ install() {
 		remote_wd="$($shell <<< 'mkdir -p scripts && cd scripts && pwd')"
 
 		for script_name in $INSTALL_SCRIPT_NAMES; do
-			local script="$artifacts/$script_name.sh"
-			[ "$DEBUG" -eq 0 ] || echo "Building script: $script"
+			local src_script="$ROOT/apps/$app/$script_name.sh"
+			local target_script="$artifacts/$script_name.sh"
+			[ "$DEBUG" -eq 0 ] || echo "Building script $src_script => $target_script"
 
 			if [ -f "$ROOT/apps/$app/$script_name.sh" ]; then
 				script_build_vars=""
@@ -198,7 +201,7 @@ install() {
 						local $subdir="$remote_wd/$app/$ENV/$subdir"
 					done
 					cat \
-						> $script \
+						> $target_script \
 						<(cat \
 							<(cat <<-EOF
 								#!/usr/bin/env bash
@@ -209,22 +212,27 @@ install() {
 							EOF
 							) \
 							<(for var in $script_build_vars; do if [ -v $var ]; then echo $var='"'${!var:-}'"'; fi; done ) \
-							$ROOT/apps/$app/$script_name.sh
+							"$src_script"
 						)
-					chmod +x $script;
+					chmod +x "$target_script";
 				)
 			fi
 		done
 
 		if [ "$DEBUG" -ge 1 ]; then
 			PS3="How do you wish to proceed? "
-			select x in "Show script" "Show diff" "Continue install [on $shell]" "Exit"; do
+			select x in "Show script" "Show diff" "Continue install [on $shell]" "Exit" "Show script (with expanded variables)"; do
 				echo $x;
 				case "$REPLY" in
-					1)
+					1|5)
 						for script_name in $INSTALL_SCRIPT_NAMES; do
 							if [ -f "$artifacts/$script_name.sh" ]; then
-								$SHOWSOURCE $artifacts/$script_name.sh;
+								if [ "$REPLY" == "5" ]; then
+									VARS="$(for v in $build_vars; do echo -n '$'$v','; done;)"
+									awk '!/^[a-zA-Z0-9_]+=/' < "$artifacts/$script_name.sh" | envsubst "$VARS" | $SHOWSOURCE
+								else
+									$SHOWSOURCE $artifacts/$script_name.sh;
+								fi
 							fi
 						done;
 					;;
@@ -236,7 +244,7 @@ install() {
 							if [ -d "$local_dir" ]; then
 								# subshell to keep cwd
 								(
-									cd $local_dir;
+									cd "$local_dir" || exit 1;
 									find ./ -type f | while read f; do
 										f="${f:2}"
 										diff -s <($shell <<< "cat $remote_dir/$f") $local_dir/$f || true
