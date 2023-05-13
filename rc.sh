@@ -181,6 +181,17 @@ install() {
 			[ "$DEBUG" -eq 0 ] || echo "Building script: $script"
 
 			if [ -f "$ROOT/apps/$app/$script_name.sh" ]; then
+				script_build_vars=""
+				for var in $build_vars; do
+					if ! [[ "$var" =~ ^[a-zA-Z0-9_]+$ ]]; then
+						_fail "Invalid build_var: $var";
+					fi
+					# See if var is used, if not, skip it in the export.
+					if grep -E '[$][{]?'$var'\b' $ROOT/apps/$app/$script_name.sh >/dev/null; then
+						script_build_vars="$script_build_vars $var";
+					fi
+				done;
+
 				# subshell to scope 'artifacts' and 'resources' variables remotely different from locally.
 				(
 					for subdir in resources artifacts; do
@@ -197,7 +208,7 @@ install() {
 								fi
 							EOF
 							) \
-							<(for var in $build_vars; do echo $var='"'${!var:-}'"'; done ) \
+							<(for var in $script_build_vars; do if [ -v $var ]; then echo $var='"'${!var:-}'"'; fi; done ) \
 							$ROOT/apps/$app/$script_name.sh
 						)
 					chmod +x $script;
