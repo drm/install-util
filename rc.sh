@@ -1,14 +1,30 @@
+_add_build_vars() {
+	local current_build_vars="$1"
+	local env_before="$2"
+	local env_after="$3"
+	local vars_before
+	local vars_after
+
+	vars_before="$(echo "$env_before" | awk -F '=' '{print $1}')"
+	vars_after="$(echo "$env_after" | awk -F '=' '{print $1}')"
+
+	echo "$current_build_vars $(comm --nocheck-order -1 -3 <(echo "$vars_before") <(echo "$vars_after"))"
+}
 
 ## Called at the end of this file to initialize the environment
 _prelude() {
+	local vars_before
 	[ "${DEBUG:-0}" -gt 2 ] && set -x
 
 	if [ "${ROOT:-}" == "" ]; then
 		echo "Missing ROOT. See README.md for details."
 		exit;
 	fi
+	export build_vars="ENV resources artifacts"
 	if [ -f "$ROOT/project.sh" ]; then
+		env_before="$(printenv)"
 		source $ROOT/project.sh
+		build_vars="$(_add_build_vars "$build_vars" "$env_before" "$(printenv)")"
 	fi
 	export PS1="$NAMESPACE [\$ENV] "
 	export PS4="+ \033[0;37m[debug]\033[0m"' $(date +"%Y-%m-%dT%H:%M:%S.%N") ${BASH_SOURCE:-1}:${LINENO:-} ${FUNCNAME[0]:-main}() - '
@@ -157,11 +173,12 @@ install() {
 	done
 
 	for app in "$@"; do
-		local build_vars="ENV NAMESPACE VERSION artifacts resources app server"
 		local ssh; ssh="$(_cfg_get_ssh $app $ENV)"
 		local shell; shell="$(_cfg_get_shell $app $ENV)"
 
+		vars_before="$(printenv)"
 		source $ROOT/vars.sh
+		build_vars="$(_add_build_vars "$build_vars" "$vars_before" "$(printenv)")"
 
 		for subdir in resources artifacts; do
 			local $subdir="$ROOT/apps/$app/$subdir/"
@@ -172,7 +189,9 @@ install() {
 		local build_script="$ROOT/apps/$app/build.sh"
 		if [ -f "$build_script" ]; then
 			[ "$DEBUG" -eq 0 ] || echo "Calling build script: $build_script"
+			vars_before="$(printenv)"
 			source "$build_script"
+			build_vars="$(_add_build_vars "$build_vars" "$vars_before" "$(printenv)")"
 		fi
 
 		local remote_wd;
@@ -187,7 +206,7 @@ install() {
 				script_build_vars=""
 				for var in $build_vars; do
 					if ! [[ "$var" =~ ^[a-zA-Z0-9_]+$ ]]; then
-						_fail "Invalid build_var: $var";
+						_fail "Invalid build_var format: $var";
 					fi
 					# See if var is used, if not, skip it in the export.
 					if grep -E '[$][{]?'$var'\b' $ROOT/apps/$app/$script_name.sh >/dev/null; then
@@ -211,7 +230,7 @@ install() {
 								fi
 							EOF
 							) \
-							<(for var in $script_build_vars; do if [ -v $var ]; then echo $var='"'${!var:-}'"'; fi; done ) \
+							<(for var in $script_build_vars; do if [ -v "$var" ] && [ -n "${!var}" ]; then echo $var='"'${!var:-}'"'; fi; done ) \
 							"$src_script"
 						)
 					chmod +x "$target_script";
