@@ -9,7 +9,7 @@ while [ "$RESTART" == "y" ]; do
 	status="$?"
 	if [ "$status" != "0" ]; then
 		echo "Shell exited with status $status"
-		read \
+		read -r \
 			-p "Do you wish to restart? [y/N] " \
 			RESTART
 	else

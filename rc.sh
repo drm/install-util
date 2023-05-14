@@ -23,7 +23,8 @@ _prelude() {
 	export build_vars="ENV resources artifacts"
 	if [ -f "$ROOT/project.sh" ]; then
 		env_before="$(printenv)"
-		source $ROOT/project.sh
+		# shellcheck disable=SC1091
+		source "$ROOT/project.sh"
 		build_vars="$(_add_build_vars "$build_vars" "$env_before" "$(printenv)")"
 	fi
 	export PS1="$NAMESPACE [\$ENV] "
@@ -37,10 +38,10 @@ _prelude() {
 	export BASH="${BASH:-/bin/bash}"
 
 	# In the future, for portability we might rather configure a command line to use mysql, psql or something else
-	export SQLITE="$(which sqlite3)"
-	export SSH="$(which ssh)"
-	export RSYNC="$(which rsync)"
-	export SHOWSOURCE="$(which batcat)"
+	export SQLITE; SQLITE="$(which sqlite3)"
+	export SSH; SSH="$(which ssh)"
+	export RSYNC; RSYNC="$(which rsync)"
+	export SHOWSOURCE; SHOWSOURCE="$(which batcat)"
 	if [ "$SHOWSOURCE" != "" ]; then
 		SHOWSOURCE="$SHOWSOURCE --wrap never --style=grid,header,numbers"
 	else
@@ -86,7 +87,7 @@ _query() {
 
 _confirm() {
 	local response;
-	read -p "$1" response < /dev/tty
+	read -r -p "$1" response < /dev/tty
 	if [ "$response" == "y" ] || [ "$response" == "Y" ]; then
 		return 0
 	else
@@ -111,7 +112,7 @@ _cfg_get_ssh_prefix() {
 	local ssh; ssh=$(_cfg_get_ssh "$1" "$2");
 	if [ "$ssh" != "" ]; then
 		shift 2;
-		echo "$SSH" -F "$ROOT/ssh/config $@ $ssh "
+		echo "$SSH" -F "$ROOT/ssh/config $* $ssh "
 	fi
 }
 
@@ -128,12 +129,12 @@ _cfg_get_shell() {
 
 ## Wrapper for 'ssh' to use the project ssh config.
 ssh() {
-	"$SSH" -F "$ROOT/ssh/config" $@
+	"$SSH" -F "$ROOT/ssh/config" "$@"
 }
 
 ## Wrapper for 'rsync' to use the project ssh config.
 rsync() {
-	"$RSYNC" -e "$SSH -F $ROOT/ssh/config" $@
+	"$RSYNC" -e "$SSH -F $ROOT/ssh/config" "$@"
 }
 
 ## Increase debug level, or turn debugging off.
@@ -173,23 +174,28 @@ install() {
 	done
 
 	for app in "$@"; do
-		local ssh; ssh="$(_cfg_get_ssh $app $ENV)"
-		local shell; shell="$(_cfg_get_shell $app $ENV)"
+		local ssh; ssh="$(_cfg_get_ssh "$app" "$ENV")"
+		local shell; shell="$(_cfg_get_shell "$app" "$ENV")"
 
-		vars_before="$(printenv)"
-		source $ROOT/vars.sh
-		build_vars="$(_add_build_vars "$build_vars" "$vars_before" "$(printenv)")"
+		if [ -f "$ROOT/vars.sh" ]; then
+			vars_before="$(printenv)"
+			# shellcheck disable=SC1091
+			source "$ROOT/vars.sh"
+			build_vars="$(_add_build_vars "$build_vars" "$vars_before" "$(printenv)")"
+		fi
 
 		for subdir in resources artifacts; do
 			local $subdir="$ROOT/apps/$app/$subdir/"
 		done
 		artifacts="$artifacts/$ENV"
-		rm -rf $artifacts;
-		mkdir -p $artifacts
+		rm -rf "$artifacts"
+		mkdir -p "$artifacts"
 		local build_script="$ROOT/apps/$app/build.sh"
 		if [ -f "$build_script" ]; then
 			[ "$DEBUG" -eq 0 ] || echo "Calling build script: $build_script"
+			
 			vars_before="$(printenv)"
+			# shellcheck disable=SC1090
 			source "$build_script"
 			build_vars="$(_add_build_vars "$build_vars" "$vars_before" "$(printenv)")"
 		fi
@@ -209,7 +215,7 @@ install() {
 						_fail "Invalid build_var format: $var";
 					fi
 					# See if var is used, if not, skip it in the export.
-					if grep -E '[$][{]?'$var'\b' $ROOT/apps/$app/$script_name.sh >/dev/null; then
+					if grep -E '[$][{]?'"$var"'\b' "$ROOT/apps/$app/$script_name.sh" >/dev/null; then
 						script_build_vars="$script_build_vars $var";
 					fi
 				done;
@@ -220,7 +226,7 @@ install() {
 						local $subdir="$remote_wd/$app/$ENV/$subdir"
 					done
 					cat \
-						> $target_script \
+						> "$target_script" \
 						<(cat \
 							<(cat <<-EOF
 								#!/usr/bin/env bash
@@ -230,7 +236,11 @@ install() {
 								fi
 							EOF
 							) \
-							<(for var in $script_build_vars; do if [ -v "$var" ] && [ -n "${!var}" ]; then echo $var='"'${!var:-}'"'; fi; done ) \
+							<(for var in $script_build_vars; do 
+								if [ -v "$var" ] && [ -n "${!var}" ]; 
+									then echo "$var"='"'"${!var:-}"'"'; 
+								fi; 
+							done ) \
 							"$src_script"
 						)
 					chmod +x "$target_script";
@@ -241,16 +251,16 @@ install() {
 		if [ "$DEBUG" -ge 1 ]; then
 			PS3="How do you wish to proceed? "
 			select x in "Show script" "Show diff" "Continue install [on $shell]" "Exit" "Show script (with expanded variables)"; do
-				echo $x;
+				echo "$x";
 				case "$REPLY" in
 					1|5)
 						for script_name in $INSTALL_SCRIPT_NAMES; do
 							if [ -f "$artifacts/$script_name.sh" ]; then
 								if [ "$REPLY" == "5" ]; then
-									VARS="$(for v in $build_vars; do echo -n '$'$v','; done;)"
+									VARS="$(for v in $build_vars; do echo -n '$'"$v"','; done;)"
 									awk '!/^[a-zA-Z0-9_]+=/' < "$artifacts/$script_name.sh" | envsubst "$VARS" | $SHOWSOURCE
 								else
-									$SHOWSOURCE $artifacts/$script_name.sh;
+									$SHOWSOURCE "$artifacts/$script_name.sh";
 								fi
 							fi
 						done;
@@ -264,9 +274,9 @@ install() {
 								# subshell to keep cwd
 								(
 									cd "$local_dir" || exit 1;
-									find ./ -type f | while read f; do
+									find ./ -type f | while read -r f; do
 										f="${f:2}"
-										diff -s <($shell <<< "cat $remote_dir/$f") $local_dir/$f || true
+										diff -s <($shell <<< "cat $remote_dir/$f") "$local_dir/$f" || true
 									done;
 								)
 							fi;
@@ -291,10 +301,10 @@ install() {
 			local local_dir="${!subdir}"
 			local remote_dir="$remote_wd/$app/$ENV/$subdir"
 
-			if [ -d "$local_dir" ] && [ "$(find $local_dir -type f | wc -l)" -gt 0 ]; then
-				rsync_opts=""
+			if [ -d "$local_dir" ] && [ "$(find "$local_dir" -type f | wc -l)" -gt 0 ]; then
+				rsync_opts=()
 				if [ "$DEBUG" -ge 2 ]; then
-					rsync_opts="$rsync_opts -nv"
+					rsync_opts=("${rsync_opts[@]}" "-nv")
 				fi
 				if [ "$DEBUG" -lt 2 ]; then
 					if [ "$DEBUG" -lt 1 ]; then
@@ -304,9 +314,9 @@ install() {
 					fi
 				fi
 				if [ "$ssh" != "" ]; then
-					rsync -prL $rsync_opts "$local_dir/" "$ssh:$remote_dir/"
+					rsync -prL "${rsync_opts[@]}" "$local_dir/" "$ssh:$remote_dir/"
 				else
-					rsync -prL $rsync_opts "$local_dir/" "$remote_dir/"
+					rsync -prL "${rsync_opts[@]}" "$local_dir/" "$remote_dir/"
 				fi
 			fi
 		done;
@@ -330,7 +340,7 @@ install() {
 
 ## Show help.
 help() {
-	$PAGER $ROOT/README.md
+	$PAGER "$ROOT"/README.md
 }
 
 ## List all apps.
@@ -349,8 +359,8 @@ deployments() {
 
 ## Refresh all server's ip's
 refresh_dns() {
-	_query <<<"SELECT name, hostname FROM server WHERE hostname IS NOT NULL" | while IFS="|" read name hostname; do
-		echo "UPDATE server SET ip='$(dig +short $hostname | tail -1)' WHERE name='$name';"
+	_query <<<"SELECT name, hostname FROM server WHERE hostname IS NOT NULL" | while IFS="|" read -r name hostname; do
+		echo "UPDATE server SET ip='$(dig +short "$hostname" | tail -1)' WHERE name='$name';"
 	done | _query;
 }
 
@@ -358,26 +368,26 @@ refresh_dns() {
 verify() {
 	local app;
 	local d;
-	_query <<< "SELECT ssh FROM server WHERE ssh IS NOT NULL" | while read s; do
-		ssh -n $s echo "Hello from $s";
+	_query <<< "SELECT ssh FROM server WHERE ssh IS NOT NULL" | while read -r s; do
+		ssh -n "$s" echo "Hello from $s";
 	done;
-	for d in $ROOT/apps/*; do
+	for d in "$ROOT/apps/"*; do
 		app="$(basename "$d")"
 		echo "App '${app}' is configured in db: $(_query <<<"SELECT CASE WHEN COUNT(1) > 0 THEN 'YES' ELSE 'NO' END FROM app WHERE name='${app}'")";
 	done
-	_query <<< "SELECT app_name, env_name FROM deployment" | while IFS="|" read app_name env_name; do
-		shell="$(_cfg_get_shell $app_name $env_name)"
+	_query <<< "SELECT app_name, env_name FROM deployment" | while IFS="|" read -r app_name env_name; do
+		shell="$(_cfg_get_shell "$app_name" "$env_name")"
 		$shell <<<"echo 'Hello from $shell'";
-		DEBUG=9 install $app_name $env_name
+		DEBUG=9 install "$app_name" "$env_name"
 	done;
 }
 
 ## Download SSH keys from each server into local database.
 fetch_keys() {
-	_query <<< "SELECT name, ssh FROM server WHERE ssh IS NOT NULL" | while IFS="|" read server_name ssh; do
+	_query <<< "SELECT name, ssh FROM server WHERE ssh IS NOT NULL" | while IFS="|" read -r server_name ssh; do
 		echo "BEGIN;"
 		echo "DELETE FROM ssh_key WHERE server_name='$server_name';";
-		ssh "$ssh" /bin/bash <<< "cat ~/.ssh/authorized_keys" | sed 's/#.*//g' | awk NF | sort | while IFS=" " read type key comment; do
+		ssh "$ssh" /bin/bash <<< "cat ~/.ssh/authorized_keys" | sed 's/#.*//g' | awk NF | sort | while IFS=" " read -r type key comment; do
 			cat <<-EOF
 				INSERT INTO
 					ssh_key(server_name, type, key, comment)
@@ -401,9 +411,9 @@ push_keys() {
 	fi
 	local new;
 	local diff;
-	_query <<< "SELECT name, ssh FROM server WHERE $where" | while IFS="|" read server_name ssh; do
+	_query <<< "SELECT name, ssh FROM server WHERE $where" | while IFS="|" read -r server_name ssh; do
 		new="$(mktemp)"
-		trap "rm -f '$new'" EXIT
+		trap "rm -f '""$new""'" EXIT
 		_query <<< "SELECT type || ' ' || key || ' ' || comment FROM ssh_key WHERE server_name='$server_name'" | sort > "$new"
 		diff="$(diff <(ssh -n "$ssh" cat \~/.ssh/authorized_keys | sort) "$new" || true)"
 		if [ "$diff" != "" ]; then
