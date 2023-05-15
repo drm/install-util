@@ -238,7 +238,9 @@ install() {
 							EOF
 							) \
 							<(for var in $script_build_vars; do
-								declare -p "$var"
+								if [ -v var ] && [ -n "$var${var[*]}" ]; then
+									declare -p "$var"
+								fi
 							done ) \
 							"$src_script"
 						)
