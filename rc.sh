@@ -1,14 +1,14 @@
 _add_build_vars() {
-	local current_build_vars="$1"
-	local env_before="$2"
-	local env_after="$3"
-	local vars_before
-	local vars_after
+	local __current_build_vars="$1"
+	local __env_before="$2"
+	local __env_after="$3"
+	local __names_before
+	local __names_after
 
-	vars_before="$(echo "$env_before" | awk -F '=' '{print $1}')"
-	vars_after="$(echo "$env_after" | awk -F '=' '{print $1}')"
+	__names_before="$(echo "$__env_before" | sed 's/^declare -[^ ]\+ //g' | awk -F '=' '{print $1}' | grep -v '^__')"
+	__names_after="$(echo "$__env_after" | sed 's/^declare -[^ ]\+ //g' | awk -F '=' '{print $1}' | grep -v '^__')"
 
-	echo "$current_build_vars $(comm --nocheck-order -1 -3 <(echo "$vars_before") <(echo "$vars_after"))"
+	echo "$__current_build_vars $(comm --nocheck-order -1 -3 <(echo "$__names_before") <(echo "$__names_after"))"
 }
 
 ## Called at the end of this file to initialize the environment
@@ -22,10 +22,10 @@ _prelude() {
 	fi
 	export build_vars="ENV resources artifacts"
 	if [ -f "$ROOT/project.sh" ]; then
-		env_before="$(printenv)"
+		vars_before="$(declare -p)"
 		# shellcheck disable=SC1091
 		source "$ROOT/project.sh"
-		build_vars="$(_add_build_vars "$build_vars" "$env_before" "$(printenv)")"
+		build_vars="$(_add_build_vars "$build_vars" "$vars_before" "$(declare -p)")"
 	fi
 	export PS1="$NAMESPACE [\$ENV] "
 	export PS4="+ \033[0;37m[debug]\033[0m"' $(date +"%Y-%m-%dT%H:%M:%S.%N") ${BASH_SOURCE:-1}:${LINENO:-} ${FUNCNAME[0]:-main}() - '
@@ -161,6 +161,7 @@ vars() {
 
 ## Perform deployment for all specified arguments.
 install() {
+	local vars_before
 	for app in "$@"; do
 		if [ "$(_query <<<"SELECT COUNT(1) FROM app WHERE name='$app'")" != "1" ]; then
 			_fail "Invalid app name $app. Valid app names are: $(_query <<< "SELECT GROUP_CONCAT(DISTINCT app_name) FROM deployment")"
@@ -178,10 +179,10 @@ install() {
 		local shell; shell="$(_cfg_get_shell "$app" "$ENV")"
 
 		if [ -f "$ROOT/vars.sh" ]; then
-			vars_before="$(printenv)"
+			vars_before="$(declare -p)"
 			# shellcheck disable=SC1091
 			source "$ROOT/vars.sh"
-			build_vars="$(_add_build_vars "$build_vars" "$vars_before" "$(printenv)")"
+			build_vars="$(_add_build_vars "$build_vars" "$vars_before" "$(declare -p)")"
 		fi
 
 		for subdir in resources artifacts; do
@@ -194,10 +195,10 @@ install() {
 		if [ -f "$build_script" ]; then
 			[ "$DEBUG" -eq 0 ] || echo "Calling build script: $build_script"
 			
-			vars_before="$(printenv)"
+			vars_before="$(declare -p)"
 			# shellcheck disable=SC1090
 			source "$build_script"
-			build_vars="$(_add_build_vars "$build_vars" "$vars_before" "$(printenv)")"
+			build_vars="$(_add_build_vars "$build_vars" "$vars_before" "$(declare -p)")"
 		fi
 
 		local remote_wd;
@@ -236,10 +237,8 @@ install() {
 								fi
 							EOF
 							) \
-							<(for var in $script_build_vars; do 
-								if [ -v "$var" ] && [ -n "${!var}" ]; 
-									then echo "$var"='"'"${!var:-}"'"'; 
-								fi; 
+							<(for var in $script_build_vars; do
+								declare -p "$var"
 							done ) \
 							"$src_script"
 						)
