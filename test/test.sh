@@ -1,9 +1,13 @@
 #!/bin/bash
+
+set -euo pipefail
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 trap 'rm -rf '"$ROOT"'/scripts' EXIT;
 cd "$ROOT";
 rm -f "$ROOT/config.db"
 touch "$ROOT/config.db"
+# shellcheck disable=SC1091
 source "$ROOT/../rc.sh"
 
 _query < "$ROOT/../schema.sql"
@@ -31,8 +35,8 @@ for f in "$ROOT"/apps/*/expect*.txt; do
 	filename="$(basename "$f" .txt)"
 	ENV="${filename/expect./}"
 	app="$(basename "$(dirname "$f")")";
-	output=$(ENV="$ENV" install $app 2>&1)
-	if ! diff <(echo "$output") $f; then
+	output=$(ENV="$ENV" install "$app" 2>&1)
+	if ! diff <(echo "$output") "$f"; then
 		echo "Failure!"
 		exit 2;
 	fi
