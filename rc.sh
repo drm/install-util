@@ -20,7 +20,7 @@ _prelude() {
 		echo "Missing ROOT. See README.md for details."
 		exit;
 	fi
-	export build_vars="ENV resources artifacts"
+	export build_vars="DEBUG ENV resources artifacts"
 	if [ -f "$ROOT/project.sh" ]; then
 		vars_before="$(declare -p)"
 		# shellcheck disable=SC1091
@@ -232,7 +232,8 @@ install() {
 							<(cat <<-EOF
 								#!/usr/bin/env bash
 								set -euo pipefail
-								if [ "$DEBUG" -gt 0 ]; then
+								DEBUG="$DEBUG"
+								if [ "\$DEBUG" -gt 0 ]; then
 									set -x
 								fi
 							EOF
