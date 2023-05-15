@@ -59,7 +59,7 @@ generate-ssh-env() {
 	  UserKnownHostsFile $ROOT/ssh/known_hosts
 	EOF
 	
-	# Just creating/testing the first connection.
+	# Just creating/testing the first connection to accept the host key.
 	ssh -o StrictHostKeyChecking=accept-new install-util-remote true 
 }
 
@@ -76,7 +76,7 @@ run-tests() {
 	done;
 }
 
-init-db;
+init-db
 generate-ssh-env
 run-tests
 
