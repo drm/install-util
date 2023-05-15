@@ -1,4 +1,10 @@
-_add_build_vars() {
+## Prints a list of vars that have been added in-between a declare call
+## Example:
+## 	vars_before="$(declare -p)"
+##	source somefile
+##	vars="$(_add_declared_vars "$vars" "$vars_before" "$(declare -p)")"
+_add_declared_vars() {
+	
 	local __current_build_vars="$1"
 	local __env_before="$2"
 	local __env_after="$3"
@@ -14,6 +20,7 @@ _add_build_vars() {
 ## Called at the end of this file to initialize the environment
 _prelude() {
 	local vars_before
+
 	[ "${DEBUG:-0}" -gt 1 ] && set -x
 
 	if [ "${ROOT:-}" == "" ]; then
@@ -25,7 +32,7 @@ _prelude() {
 		vars_before="$(declare -p)"
 		# shellcheck disable=SC1091
 		source "$ROOT/project.sh"
-		build_vars="$(_add_build_vars "$build_vars" "$vars_before" "$(declare -p)")"
+		build_vars="$(_add_declared_vars "$build_vars" "$vars_before" "$(declare -p)")"
 	fi
 	export PS1="$NAMESPACE [\$ENV] "
 	export PS4="+ \033[0;37m[debug]\033[0m"' $(date +"%Y-%m-%dT%H:%M:%S.%N") ${BASH_SOURCE:-1}:${LINENO:-} ${FUNCNAME[0]:-main}() - '
@@ -183,7 +190,7 @@ install() {
 			vars_before="$(declare -p)"
 			# shellcheck disable=SC1091
 			source "$ROOT/vars.sh"
-			build_vars="$(_add_build_vars "$build_vars" "$vars_before" "$(declare -p)")"
+			build_vars="$(_add_declared_vars "$build_vars" "$vars_before" "$(declare -p)")"
 		fi
 
 		for subdir in resources artifacts; do
@@ -199,7 +206,7 @@ install() {
 			vars_before="$(declare -p)"
 			# shellcheck disable=SC1090
 			source "$build_script"
-			build_vars="$(_add_build_vars "$build_vars" "$vars_before" "$(declare -p)")"
+			build_vars="$(_add_declared_vars "$build_vars" "$vars_before" "$(declare -p)")"
 		fi
 
 		local remote_wd;
