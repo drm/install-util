@@ -1,5 +1,6 @@
 #!/bin/bash
 
+
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -19,7 +20,7 @@ done;
 _query <<-EOF
 	INSERT INTO env(name) VALUES('local'), ('remote');
 	INSERT INTO server(name) VALUES('local_server'), ('remote_server');
-	UPDATE server SET ssh='$(whoami)@localhost' WHERE server.name='remote_server';
+	UPDATE server SET ssh='install-util-remote' WHERE server.name='remote_server';
  	INSERT INTO
  		deployment(app_name, server_name, env_name)
  	SELECT
@@ -28,8 +29,27 @@ _query <<-EOF
 		app
 			CROSS JOIN server
 			INNER JOIN env ON server.name=env.name || '_server'
+	WHERE true
+	ON CONFLICT DO NOTHING
 	;
 EOF
+
+trap 'docker rm -f install-util-remote >/dev/null 2>&1' EXIT
+./install.sh local remote-docker
+
+docker cp "install-util-remote:/root/.ssh/id_rsa" "$ROOT/ssh/id_rsa"
+rm -f "$ROOT/ssh/known_hosts"
+cat <<-EOF > "$ROOT"/ssh/config
+Host install-util-remote
+	HostName 127.0.0.1
+	Port 22220
+	User root
+	IdentityFile $ROOT/ssh/id_rsa
+	UserKnownHostsFile $ROOT/ssh/known_hosts
+	StrictHostKeyChecking accept-new
+EOF
+
+ssh -F "$ROOT/ssh/config" install-util-remote echo "First connection"
 
 for f in "$ROOT"/apps/*/expect*.txt; do
 	filename="$(basename "$f" .txt)"

@@ -14,7 +14,7 @@ _add_build_vars() {
 ## Called at the end of this file to initialize the environment
 _prelude() {
 	local vars_before
-	[ "${DEBUG:-0}" -gt 2 ] && set -x
+	[ "${DEBUG:-0}" -gt 1 ] && set -x
 
 	if [ "${ROOT:-}" == "" ]; then
 		echo "Missing ROOT. See README.md for details."
@@ -40,6 +40,7 @@ _prelude() {
 	# In the future, for portability we might rather configure a command line to use mysql, psql or something else
 	export SQLITE; SQLITE="$(which sqlite3)"
 	export SSH; SSH="$(which ssh)"
+	export SSH_CONFIG; SSH_CONFIG="$(if [ -f "$ROOT/ssh/config" ]; then echo "$ROOT/ssh/config"; else echo "/dev/null"; fi)"
 	export RSYNC; RSYNC="$(which rsync)"
 	export SHOWSOURCE; SHOWSOURCE="$(which batcat)"
 	if [ "$SHOWSOURCE" != "" ]; then
@@ -112,7 +113,7 @@ _cfg_get_ssh_prefix() {
 	local ssh; ssh=$(_cfg_get_ssh "$1" "$2");
 	if [ "$ssh" != "" ]; then
 		shift 2;
-		echo "$SSH" -F "$ROOT/ssh/config $* $ssh "
+		echo "$SSH" -F "$SSH_CONFIG" "$* $ssh "
 	fi
 }
 
@@ -129,12 +130,12 @@ _cfg_get_shell() {
 
 ## Wrapper for 'ssh' to use the project ssh config.
 ssh() {
-	"$SSH" -F "$ROOT/ssh/config" "$@"
+	"$SSH" -F "$SSH_CONFIG" "$@"
 }
 
 ## Wrapper for 'rsync' to use the project ssh config.
 rsync() {
-	"$RSYNC" -e "$SSH -F $ROOT/ssh/config" "$@"
+	"$RSYNC" -e "$SSH -F \"$SSH_CONFIG\"" "$@"
 }
 
 ## Increase debug level, or turn debugging off.
@@ -232,8 +233,7 @@ install() {
 							<(cat <<-EOF
 								#!/usr/bin/env bash
 								set -euo pipefail
-								DEBUG="$DEBUG"
-								if [ "\$DEBUG" -gt 0 ]; then
+								if [ "\${DEBUG:-0}" -gt 0 ]; then
 									set -x
 								fi
 							EOF
@@ -330,7 +330,7 @@ install() {
 							local $subdir="$remote_wd/$app/$ENV/$subdir"
 						done
 
-						$shell <<< "$artifacts/$script_name.sh";
+						DEBUG=$DEBUG ENV=$ENV $shell <<< "$artifacts/$script_name.sh";
 					)
 				fi
 			done;
