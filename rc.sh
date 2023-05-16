@@ -14,7 +14,7 @@ _add_declared_vars() {
 	__names_before="$(echo "$__env_before" | sed 's/^declare -[^ ]\+ //g' | awk -F '=' '{print $1}' | grep -v '^__')"
 	__names_after="$(echo "$__env_after" | sed 's/^declare -[^ ]\+ //g' | awk -F '=' '{print $1}' | grep -v '^__')"
 
-	echo "$__current_build_vars $(comm --nocheck-order -1 -3 <(echo "$__names_before") <(echo "$__names_after"))"
+	echo "$__current_build_vars $(comm -1 -3 <(echo "$__names_before" | sort) <(echo "$__names_after" | sort))"
 }
 
 ## Called at the end of this file to initialize the environment
