@@ -5,3 +5,4 @@ echo "some_array:"
 for f in "${some_array[@]}"; do
 	echo " - $f";
 done;
+echo $some_other_value

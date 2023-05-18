@@ -6,3 +6,4 @@ some_array:
  - a
  - b
  - c
+this should be detected too

@@ -1,13 +1,13 @@
 ## Filters all var names from a `declare -p` output
 __filter_var_names() {
-	echo "$1" | sed -E 's/^(typeset|export|declare)( -[^ ]+)? //g' | awk -F "=" '{print $1}' | grep -E '^[A-Za-z_]+'
+	echo "$1" | sed -E 's/^(typeset|export|declare)( -[^ ]+)? //g' | awk -F "=" '{print $1}' | grep -E '^[A-Za-z_]+$'
 }
 
 ## Prints a list of vars that have been added in-between a declare call
 ## Example:
-## 	vars_before="$(declare -px)"
+## 	vars_before="$(declare -p)"
 ##	source somefile
-##	vars="$(_add_declared_vars "$vars" "$vars_before" "$(declare -px)")"
+##	vars="$(_add_declared_vars "$vars" "$vars_before" "$(declare -p)")"
 _add_declared_vars() {
 	local __current_build_vars="$1"
 	local __env_before="$2"
@@ -33,10 +33,10 @@ _prelude() {
 	fi
 	export build_vars="DEBUG ENV VERSION resources artifacts"
 	if [ -f "$ROOT/project.sh" ]; then
-		vars_before="$(declare -px)"
+		vars_before="$(declare -p)"
 		# shellcheck disable=SC1091
 		source "$ROOT/project.sh"
-		build_vars="$(_add_declared_vars "$build_vars" "$vars_before" "$(declare -px)")"
+		build_vars="$(_add_declared_vars "$build_vars" "$vars_before" "$(declare -p)")"
 	fi
 	export PS1="$NAMESPACE [\$ENV] "
 	export PS4="+ \033[0;37m[debug]\033[0m"' $(date +"%Y-%m-%dT%H:%M:%S.%N") ${BASH_SOURCE:-1}:${LINENO:-} ${FUNCNAME[0]:-main}() - '
@@ -191,10 +191,10 @@ install() {
 		local shell; shell="$(_cfg_get_shell "$app" "$ENV")"
 
 		if [ -f "$ROOT/vars.sh" ]; then
-			vars_before="$(declare -px)"
+			vars_before="$(declare -p)"
 			# shellcheck disable=SC1091
 			source "$ROOT/vars.sh"
-			build_vars="$(_add_declared_vars "$build_vars" "$vars_before" "$(declare -px)")"
+			build_vars="$(_add_declared_vars "$build_vars" "$vars_before" "$(declare -p)")"
 		fi
 
 		for subdir in resources artifacts; do
@@ -207,10 +207,10 @@ install() {
 		if [ -f "$build_script" ]; then
 			[ "$DEBUG" -eq 0 ] || echo "Calling build script: $build_script"
 			
-			vars_before="$(declare -px)"
+			vars_before="$(declare -p)"
 			# shellcheck disable=SC1090
 			source "$build_script"
-			build_vars="$(_add_declared_vars "$build_vars" "$vars_before" "$(declare -px)")"
+			build_vars="$(_add_declared_vars "$build_vars" "$vars_before" "$(declare -p)")"
 		fi
 
 		local remote_wd;
@@ -251,7 +251,7 @@ install() {
 							) \
 							<(for var in $script_build_vars; do
 								if [ -v var ] && [ -n "$var${var[*]}" ]; then
-									declare -px "$var"
+									declare -p "$var"
 								fi
 							done ) \
 							"$src_script"
