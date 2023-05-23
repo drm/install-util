@@ -53,7 +53,7 @@ _prelude() {
 	export SSH; SSH="$(which ssh)"
 	export SSH_CONFIG; SSH_CONFIG="$(if [ -f "$ROOT/ssh/config" ]; then echo "$ROOT/ssh/config"; else echo "/dev/null"; fi)"
 	export RSYNC; RSYNC="$(which rsync)"
-	export SHOWSOURCE; SHOWSOURCE="$(which batcat || true)"
+	export SHOWSOURCE; SHOWSOURCE="$(which batcat || which bat || true)"
 	if [ "$SHOWSOURCE" != "" ]; then
 		SHOWSOURCE="$SHOWSOURCE --wrap never --style=grid,header,numbers"
 	else
@@ -263,18 +263,13 @@ install() {
 
 		if [ "$DEBUG" -ge 1 ]; then
 			PS3="How do you wish to proceed? "
-			select x in "Show script" "Show diff" "Continue install [on $shell]" "Exit" "Show script (with expanded variables)"; do
+			select x in "Show script" "Show diff" "Continue install [on $shell]" "Exit"; do
 				echo "$x";
 				case "$REPLY" in
-					1|5)
+					1)
 						for script_name in $INSTALL_SCRIPT_NAMES; do
 							if [ -f "$artifacts/$script_name.sh" ]; then
-								if [ "$REPLY" == "5" ]; then
-									VARS="$(for v in $build_vars; do echo -n '$'"$v"','; done;)"
-									awk '!/^[a-zA-Z0-9_]+=/' < "$artifacts/$script_name.sh" | envsubst "$VARS" | $SHOWSOURCE
-								else
-									$SHOWSOURCE "$artifacts/$script_name.sh";
-								fi
+								$SHOWSOURCE "$artifacts/$script_name.sh";
 							fi
 						done;
 					;;
