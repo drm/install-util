@@ -1,6 +1,6 @@
 ## Filters all var names from a `declare -p` output
 __filter_var_names() {
-	echo "$1" | sed -E 's/^(typeset|export|declare)( -[^ ]+)? //g' | awk -F "=" '{print $1}' | grep -E '^[A-Za-z_]+$'
+	echo "$1" | sed -E 's/^(typeset|export|declare)( -[^ ]+)? //g' | awk -F "=" '{print $1}' | grep -E '^[A-Za-z0-9_]+$'
 }
 
 ## Prints a list of vars that have been added in-between a declare call
