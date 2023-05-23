@@ -358,7 +358,7 @@ help() {
 
 ## List all apps.
 apps() {
-	_query -box <<<"SELECT * FROM app";
+	_query -header -list <<<"SELECT * FROM app" | column -t -s "|"
 }
 
 ## List all deployments for the specified app.
@@ -367,7 +367,7 @@ deployments() {
 	if [ "${1:-}" != "" ]; then
 		where="app_name='$1'"
 	fi
-	_query -box <<<"SELECT app_name, env_name, server_name, ssh FROM deployment INNER JOIN server ON server_name=server.name WHERE $where";
+	_query -header -list <<<"SELECT app_name, env_name, server_name, ssh FROM deployment INNER JOIN server ON server_name=server.name WHERE $where" | column -t -s "|"
 }
 
 ## Refresh all server's ip's
