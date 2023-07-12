@@ -91,7 +91,9 @@ _check_prereq() {
 
 _query() {
 	if [ "$DEBUG" -gt 0 ]; then
-		tee /dev/stderr
+		# copy all input to stderr as well.
+		# Note that tee /dev/stderr gives permission denied on some systems.
+		tee >(cat &>2)
 	else
 		cat -
 	fi | $SQLITE -init /dev/null -bail "$@" "$CONFIG_DB"
