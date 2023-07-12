@@ -53,7 +53,7 @@ _prelude() {
 	export SSH; SSH="$(which ssh)"
 	export SSH_CONFIG; SSH_CONFIG="$(if [ -f "$ROOT/ssh/config" ]; then echo "$ROOT/ssh/config"; else echo "/dev/null"; fi)"
 	export RSYNC; RSYNC="$(which rsync)"
-	export SHOWSOURCE; SHOWSOURCE="$(which batcat || which bat || true)"
+	export SHOWSOURCE; SHOWSOURCE="$(which batcat 2>/dev/null || which bat 2>/dev/null || true)"
 	if [ "$SHOWSOURCE" != "" ]; then
 		SHOWSOURCE="$SHOWSOURCE --wrap never --style=grid,header,numbers"
 	else
