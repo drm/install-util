@@ -214,6 +214,8 @@ install() {
 			source "$build_script"
 			build_vars="$(_add_declared_vars "$build_vars" "$vars_before" "$(declare -p)")"
 		fi
+		# make the list unique
+		build_vars="$(for f in $build_vars; do echo "$f"; done | sort | uniq)"
 
 		local remote_wd;
 		remote_wd="$($shell <<< 'mkdir -p scripts && cd scripts && pwd')"
