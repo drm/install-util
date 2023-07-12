@@ -310,7 +310,7 @@ install() {
 			local remote_dir="$remote_wd/$app/$ENV/$subdir"
 
 			if [ -d "$local_dir" ] && [ "$(find "$local_dir" -type f | wc -l)" -gt 0 ]; then
-				rsync_opts=()
+				rsync_opts=("-prL")
 				if [ "$DEBUG" -ge 2 ]; then
 					rsync_opts=("${rsync_opts[@]}" "-nv")
 				fi
@@ -322,9 +322,9 @@ install() {
 					fi
 				fi
 				if [ "$ssh" != "" ]; then
-					rsync -prL "${rsync_opts[@]}" "$local_dir/" "$ssh:$remote_dir/"
+					rsync "${rsync_opts[@]}" "$local_dir/" "$ssh:$remote_dir/"
 				else
-					rsync -prL "${rsync_opts[@]}" "$local_dir/" "$remote_dir/"
+					rsync "${rsync_opts[@]}" "$local_dir/" "$remote_dir/"
 				fi
 			fi
 		done;
