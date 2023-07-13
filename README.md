@@ -1,5 +1,5 @@
-
 # Install Utility
+
 This repository provides a bash/ssh-based utility for practically scaffolding
 a provisioning and/or deployment configuration.
 
@@ -138,6 +138,7 @@ as long as the script is still in development:
 ```
 DEBUG=1 ./install.sh testing mysql redis
 ```
+
 This will add 'set -x' tracing to the scripts.
 
 ```
@@ -235,13 +236,21 @@ echo "$var1 $var2"
 
 ### Undefined variables
 If variables may or may not be available, it is prudent to always provide
-a default value. It's best to declare these as early as possible:
+a default value. It's best to declare these as early as possible, using `{:-}`
+to express default values (if empty or unset, will be overwritten):
 
 ```
 my_var="${my_var:-"the default value"}"
 ```
 
+If empty values should be allowed, use: `{-}`:
+
+```
+my_var="${my_var-"the default value"}"
+```
+
+
 ### Using sqlite for (custom) configurations
 The database is accessible through the `_query` function. Of course it's
 up to you to add to the database whatever you want or need, as long as
-you keep the basic structure for the base table intact.
+you keep the basic structure for the base tables intact.
