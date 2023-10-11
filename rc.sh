@@ -1,3 +1,8 @@
+if [ "${BASH_VERSINFO:-0}" -lt 5 ]; then
+  echo "Needs at least bash version 5"
+  exit 1
+fi
+
 ## Filters all var names from a `declare -p` output
 __filter_var_names() {
 	echo "$1" | sed -E 's/^(typeset|export|declare)( -[^ ]+)? //g' | awk -F "=" '{print $1}' | grep -E '^[A-Za-z0-9_]+$'
