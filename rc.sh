@@ -26,6 +26,7 @@ _prelude() {
 	export SQLITE="$(which sqlite3)"
 	export SSH="$(which ssh)"
 	export RSYNC="$(which rsync)"
+	export SCP="$(which scp)"
 	export SHOWSOURCE="$(which batcat)"
 	if [ "$SHOWSOURCE" == "" ]; then
 		export SHOWSOURCE="cat";
@@ -120,6 +121,12 @@ rsync() {
 	"$RSYNC" -e "$SSH -F $ROOT/ssh/config" $@
 }
 
+## Wrapper for 'rsync' to use the project ssh config.
+scp() {
+	"$SCP" -F "$ROOT/ssh/config" $@
+}
+
+## Increase debug level, or turn debugging off.
 ## Increase debug level, or turn debugging off.
 debug() {
 	if [ "${1:-}" == "off" ]; then
