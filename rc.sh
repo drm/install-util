@@ -76,13 +76,16 @@ _prelude() {
 	export SSH; SSH="$(which ssh)"
 	export SSH_CONFIG; SSH_CONFIG="$(if [ -f "$ROOT/ssh/config" ]; then echo "$ROOT/ssh/config"; else echo "/dev/null"; fi)"
 	export RSYNC; RSYNC="$(which rsync)"
+	export SCP; SCP="$(which scp)"
 	export SHOWSOURCE; SHOWSOURCE="$(which batcat 2>/dev/null || which bat 2>/dev/null || true)"
 	if [ "$SHOWSOURCE" != "" ]; then
+		# batcat is available, add some flags
 		SHOWSOURCE="$SHOWSOURCE --wrap never --style=grid,header,numbers"
-	else
+	fi
+	if [ "$SHOWSOURCE" == "" ]; then
+		# batcat is not available, fallback to 'cat'
 		export SHOWSOURCE="cat";
 	fi
-
 	if [ "${SKIP_PREREQ_CHECK:-}" == "" ]; then
 		_check_prereq
 	fi
@@ -175,6 +178,12 @@ rsync() {
 	"$RSYNC" -e "$SSH -F \"$SSH_CONFIG\"" "$@"
 }
 
+## Wrapper for 'rsync' to use the project ssh config.
+scp() {
+	"$SCP" -F "$ROOT/ssh/config" $@
+}
+
+## Increase debug level, or turn debugging off.
 ## Increase debug level, or turn debugging off.
 debug() {
 	if [ "${1:-}" == "off" ]; then
