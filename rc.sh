@@ -129,9 +129,10 @@ _cfg_get_ssh() {
 ## if no ssh is configured
 _cfg_get_ssh_prefix() {
 	local ssh; ssh=$(_cfg_get_ssh "$1" "$2");
+	local sudo; sudo="$(_query <<<"SELECT CASE sudo WHEN true THEN 'sudo' END FROM server INNER JOIN deployment ON server_name=server.name WHERE app_name='${1}' AND env_name='${2}'" 2>/dev/null)"
 	if [ "$ssh" != "" ]; then
 		shift 2;
-		echo "$SSH" -F "$SSH_CONFIG" "$* $ssh "
+		echo "$SSH" -F "$SSH_CONFIG" "$* $ssh $sudo "
 	fi
 }
 
@@ -337,6 +338,7 @@ install() {
 				fi
 			fi
 		done;
+		
 		if [ "$DEBUG" -lt 2 ]; then
 			for script_name in $INSTALL_SCRIPT_NAMES; do
 				if [ -f "$artifacts/$script_name.sh" ]; then
