@@ -26,22 +26,38 @@ _add_declared_vars() {
 	echo "$__current_build_vars $(comm -1 -3 <(echo "$__names_before" | sort) <(echo "$__names_after" | sort))"
 }
 
+debug_on() {
+	if [ "${DEBUG:-0}" -gt 1 ]; then
+		set -x
+ 	fi		
+}
+
+debug_off() {
+	if [ "${DEBUG:-0}" -lt 3 ]; then
+		set +x 
+	fi
+}
+
 ## Called at the end of this file to initialize the environment
 _prelude() {
 	local vars_before
 
-	[ "${DEBUG:-0}" -gt 1 ] && set -x
-
+	debug_on
 	if [ "${ROOT:-}" == "" ]; then
 		echo "Missing ROOT. See README.md for details."
 		exit;
 	fi
 	export build_vars="DEBUG ENV VERSION resources artifacts"
 	if [ -f "$ROOT/project.sh" ]; then
+		debug_off
 		vars_before="$(declare -p)"
+		debug_on
+
 		# shellcheck disable=SC1091
 		source "$ROOT/project.sh"
+		debug_off
 		build_vars="$(_add_declared_vars "$build_vars" "$vars_before" "$(declare -p)")"
+		debug_on
 	fi
 	export PS1="$NAMESPACE [\$ENV] "
 	export PS4="+ \033[0;37m[debug]\033[0m"' $(date +"%Y-%m-%dT%H:%M:%S.%N") ${BASH_SOURCE:-1}:${LINENO:-} ${FUNCNAME[0]:-main}() - '
@@ -199,10 +215,12 @@ install() {
 		local shell; shell="$(_cfg_get_shell "$app" "$ENV")"
 
 		if [ -f "$ROOT/vars.sh" ]; then
+			debug_off
 			vars_before="$(declare -p)"
 			# shellcheck disable=SC1091
 			source "$ROOT/vars.sh"
 			build_vars="$(_add_declared_vars "$build_vars" "$vars_before" "$(declare -p)")"
+			debug_on
 		fi
 
 		for subdir in resources artifacts; do
@@ -214,11 +232,13 @@ install() {
 		local build_script="$ROOT/apps/$app/build.sh"
 		if [ -f "$build_script" ]; then
 			[ "$DEBUG" -eq 0 ] || echo "Calling build script: $build_script"
-			
+
+			debug_off
 			vars_before="$(declare -p)"
 			# shellcheck disable=SC1090
 			source "$build_script"
 			build_vars="$(_add_declared_vars "$build_vars" "$vars_before" "$(declare -p)")"
+			debug_on
 		fi
 		# make the list unique
 		build_vars="$(for f in $build_vars; do echo "$f"; done | sort | uniq)"
@@ -321,10 +341,10 @@ install() {
 
 			if [ -d "$local_dir" ] && [ "$(find "$local_dir" -type f | wc -l)" -gt 0 ]; then
 				rsync_opts=("-prL")
-				if [ "$DEBUG" -ge 2 ]; then
+				if [ "$DEBUG" -ge 3 ]; then
 					rsync_opts=("${rsync_opts[@]}" "-nv")
 				fi
-				if [ "$DEBUG" -lt 2 ]; then
+				if [ "$DEBUG" -lt 3 ]; then
 					if [ "$DEBUG" -lt 1 ]; then
 						$shell <<<"mkdir -p \"$remote_dir\""
 					else
@@ -339,7 +359,7 @@ install() {
 			fi
 		done;
 		
-		if [ "$DEBUG" -lt 2 ]; then
+		if [ "$DEBUG" -lt 3 ]; then
 			for script_name in $INSTALL_SCRIPT_NAMES; do
 				if [ -f "$artifacts/$script_name.sh" ]; then
 					(
@@ -352,7 +372,7 @@ install() {
 				fi
 			done;
 		else
-			echo "Skipping install, DEBUG is set to ${DEBUG}, and script will not run with DEBUG at a value higher than 1" ;
+			echo "Skipping install, DEBUG is set to ${DEBUG}, and script will not run with DEBUG at a value higher than 2" ;
 		fi
 	done;
 }
