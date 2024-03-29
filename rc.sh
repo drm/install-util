@@ -1,6 +1,8 @@
 if [ "${BASH_VERSINFO:-0}" -lt 5 ]; then
-  echo "Needs at least bash version 5"
-  exit 1
+	echo "Needs at least bash version 5"
+	if [ "${FORCE:-}" == "" ]; then
+		exit 1
+	fi
 fi
 
 ## Filters all var names from a `declare -p` output
