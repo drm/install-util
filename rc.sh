@@ -469,7 +469,7 @@ push_keys() {
 		if [ "$diff" != "" ]; then
 			echo "$diff";
 			if _confirm "[$server_name] Continue applying changes? [y/N] "; then
-				scp "$new" "$ssh":.ssh/authorized_keys
+				scp -F "ssh/config" "$new" "$ssh":.ssh/authorized_keys
 			fi
 		else
 			echo "[$server_name] No changes"
