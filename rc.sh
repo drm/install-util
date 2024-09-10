@@ -57,6 +57,7 @@ _prelude() {
 
 		# shellcheck disable=SC1091
 		source "$ROOT/project.sh"
+
 		debug_off
 		build_vars="$(_add_declared_vars "$build_vars" "$vars_before" "$(declare -p)")"
 		debug_on
@@ -178,12 +179,11 @@ rsync() {
 	"$RSYNC" -e "$SSH -F \"$SSH_CONFIG\"" "$@"
 }
 
-## Wrapper for 'rsync' to use the project ssh config.
+## Wrapper for 'scp' to use the project ssh config.
 scp() {
 	"$SCP" -F "$ROOT/ssh/config" $@
 }
 
-## Increase debug level, or turn debugging off.
 ## Increase debug level, or turn debugging off.
 debug() {
 	if [ "${1:-}" == "off" ]; then
@@ -451,7 +451,7 @@ fetch_keys() {
 	done | _query;
 }
 
-## Upload SSH keys from each server into management database. Note that this
+## Upload SSH keys to each server from management database. Note that this
 ## doesn't provide for any safety net regarding throwing away your own
 ## key, except for a manual confirmation of the changes.
 push_keys() {
