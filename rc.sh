@@ -72,7 +72,6 @@ _prelude() {
 	export INSTALL_SCRIPT_NAMES="${INSTALL_SCRIPT_NAMES:-install status}"
 	export BASH="${BASH:-/bin/bash}"
 
-	# In the future, for portability we might rather configure a command line to use mysql, psql or something else
 	export SQLITE; SQLITE="$(which sqlite3)"
 	export SSH; SSH="$(which ssh)"
 	export SSH_CONFIG; SSH_CONFIG="$(if [ -f "$ROOT/ssh/config" ]; then echo "$ROOT/ssh/config"; else echo "/dev/null"; fi)"
