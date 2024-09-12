@@ -62,7 +62,7 @@ _prelude() {
 		build_vars="$(_add_declared_vars "$build_vars" "$vars_before" "$(declare -p)")"
 		debug_on
 	fi
-	export PS1="$NAMESPACE [\$ENV] "
+	export PS1="server-config [$NAMESPACE] "
 	export PS4="+ \033[0;37m[debug]\033[0m"' $(date +"%Y-%m-%dT%H:%M:%S.%N") ${BASH_SOURCE:-1}:${LINENO:-} ${FUNCNAME[0]:-main}() - '
 	export DEBUG="${DEBUG:-0}"
 	export HISTFILE="$ROOT/shell_history"
