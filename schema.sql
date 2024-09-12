@@ -1,8 +1,10 @@
 CREATE TABLE IF NOT EXISTS app(
 	name text,
 	ip_suffix text,
+	ordinal int,
 
 	primary key(name)
+
 );
 
 CREATE TABLE IF NOT EXISTS env(
