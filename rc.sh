@@ -92,7 +92,9 @@ _prelude() {
 	fi
 
 	if [ "${INTERACTIVE:-}" == "1" ]; then
-		cat "$ROOT/resources/doc/header.md";
+		if test -f "$ROOT/resources/doc/header.md"; then
+			cat "$ROOT/resources/doc/header.md";
+		fi
 	fi
 }
 
