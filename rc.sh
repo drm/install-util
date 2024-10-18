@@ -99,10 +99,8 @@ _prelude() {
 		_check_prereq
 	fi
 
-	if [ "${INTERACTIVE:-}" == "1" ]; then
-		if test -f "$ROOT/resources/doc/header.md"; then
-			cat "$ROOT/resources/doc/header.md";
-		fi
+	if [ -t 0 ] && [ "$(type -t help)" == "function" ]; then
+		echo "Welcome to the install-util shell. Type 'help' for help."
 	fi
 }
 
