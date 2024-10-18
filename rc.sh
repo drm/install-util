@@ -194,28 +194,6 @@ scp() {
 	"$SCP" -F "$ROOT/ssh/config" "$@"
 }
 
-## Increase debug level, or turn debugging off.
-debug() {
-	if [ "${1:-}" == "off" ]; then
-		DEBUG="0"
-	else
-		DEBUG="$(( "$DEBUG" + 1 ))"
-	fi
-	_prelude
-	echo "Set debugging level to $DEBUG"
-}
-
-## Change current working environment.
-env() {
-	ENV="$1"
-	_prelude
-}
-
-## Dump current variables.
-vars() {
-	"$(which env)";
-}
-
 ## Perform deployment for all specified arguments.
 install() {
 	local vars_before
@@ -395,50 +373,6 @@ install() {
 		else
 			echo "Skipping install, DEBUG is set to ${DEBUG}, and script will not run with DEBUG at a value higher than 2" ;
 		fi
-	done;
-}
-
-## Show help.
-help() {
-	$PAGER "$ROOT"/README.md
-}
-
-## List all apps.
-apps() {
-	_query -header -list <<<"SELECT * FROM app" | column -t -s "|"
-}
-
-## List all deployments for the specified app.
-deployments() {
-	local where="true";
-	if [ "${1:-}" != "" ]; then
-		where="app_name='$1'"
-	fi
-	_query -header -list <<<"SELECT app_name, env_name, server_name, ssh FROM deployment INNER JOIN server ON server_name=server.name WHERE $where" | column -t -s "|"
-}
-
-## Refresh all server's ip's
-refresh_dns() {
-	_query <<<"SELECT name, hostname FROM server WHERE hostname IS NOT NULL" | while IFS="|" read -r name hostname; do
-		echo "UPDATE server SET ip='$(dig +short "$hostname" | tail -1)' WHERE name='$name';"
-	done | _query;
-}
-
-## Verify configurations
-verify() {
-	local app;
-	local d;
-	_query <<< "SELECT ssh FROM server WHERE ssh IS NOT NULL" | while read -r s; do
-		ssh -n "$s" echo "Hello from $s";
-	done;
-	for d in "$ROOT/apps/"*; do
-		app="$(basename "$d")"
-		echo "App '${app}' is configured in db: $(_query <<<"SELECT CASE WHEN COUNT(1) > 0 THEN 'YES' ELSE 'NO' END FROM app WHERE name='${app}'")";
-	done
-	_query <<< "SELECT app_name, env_name FROM deployment" | while IFS="|" read -r app_name env_name; do
-		shell="$(_cfg_get_shell "$app_name" "$env_name")"
-		$shell <<<"echo 'Hello from $shell'";
-		DEBUG=9 install "$app_name" "$env_name"
 	done;
 }
 
