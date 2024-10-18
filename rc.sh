@@ -73,7 +73,11 @@ _prelude() {
 	export FORCE="${FORCE:-}"
 	export CONFIG_DB="$ROOT/config.db"
 	export PAGER="${PAGER:-$(which less)}"
-	export INSTALL_SCRIPT_NAMES="${INSTALL_SCRIPT_NAMES:-install status}"
+	if [ "${INSTALL_SCRIPT_NAMES:-}" ]; then
+		echo "INSTALL_SCRIPT_NAMES is defined, but it was renamed to 'DO' in v3.0" >&2
+		exit 9;
+	fi
+	export DO="${DO:-install status}"
 	export BASH="${BASH:-/bin/bash}"
 
 	# In the future, for portability we might rather configure a command line to use mysql, psql or something else
@@ -263,7 +267,7 @@ install() {
 		local remote_wd;
 		remote_wd="$($shell <<< 'mkdir -p scripts && cd scripts && pwd')"
 
-		for script_name in $INSTALL_SCRIPT_NAMES; do
+		for script_name in $DO; do
 			local src_script="$ROOT/apps/$app/$script_name.sh"
 			local target_script="$artifacts/$script_name.sh"
 			[ "$DEBUG" -eq 0 ] || echo "Building script $src_script => $target_script"
@@ -314,7 +318,7 @@ install() {
 				echo "$x";
 				case "$REPLY" in
 					1)
-						for script_name in $INSTALL_SCRIPT_NAMES; do
+						for script_name in $DO; do
 							if [ -f "$artifacts/$script_name.sh" ]; then
 								$SHOWSOURCE "$artifacts/$script_name.sh";
 							fi
@@ -377,7 +381,7 @@ install() {
 		done;
 		
 		if [ "$DEBUG" -lt 3 ]; then
-			for script_name in $INSTALL_SCRIPT_NAMES; do
+			for script_name in $DO; do
 				if [ -f "$artifacts/$script_name.sh" ]; then
 					(
 						for subdir in resources artifacts; do
