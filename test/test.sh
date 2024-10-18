@@ -64,9 +64,6 @@ generate-ssh-env() {
 }
 
 run-tests() {
-	./shell.sh <<< "apps"
-	./shell.sh <<< "deployments"
-
 	for f in "$ROOT"/apps/*/expect*.txt; do
 		filename="$(basename "$f" .txt)"
 		ENV="${filename/expect./}"
