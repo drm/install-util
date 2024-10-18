@@ -48,7 +48,10 @@ more applications directly:
 ```
 
 ### `config.db`
-TODO
+The config.db file contains an sqlite3 database that is used to store
+any information related to the project. By default, it should be initialized
+with the files from 'sql/', starting with schema.sql and any additional
+upgrade files.
 
 ### `ssh/config`
 This is a `ssh_config(5)` file that may contain all servers used in the deployments
