@@ -22,29 +22,31 @@ ssh_fetch_keys() {
 		echo "BEGIN;"
 		echo "DELETE FROM server__ssh_key WHERE server_name='$server_name';";
 		ssh "$ssh" -n cat .ssh/authorized_keys | sed 's/#.*//g' | awk NF | sort | while IFS=" " read -r type key comment; do
-			local key_name="$(_query <<< "SELECT name FROM ssh_key WHERE key='$key'")"
-			if ! [ "$key_name" ]; then
-				if [ "$(_query <<< "SELECT key FROM ssh_key WHERE name='$comment'")" ]; then
-					echo "CONFLICT: Key for name $comment exists, but the keys don't match" >&2
-				else
-					cat <<-EOF
-						INSERT INTO
-							ssh_key(type, key, name)
-						VALUES
-							('$type', '$key', '$comment')
-						ON CONFLICT DO NOTHING;
-					EOF
+			if [ "$key" ]; then
+				local key_name="$(_query <<< "SELECT name FROM ssh_key WHERE key='$key'")"
+				if ! [ "$key_name" ]; then
+					if [ "$(_query <<< "SELECT key FROM ssh_key WHERE name='$comment'")" ]; then
+						echo "CONFLICT: Key for name $comment exists, but the keys don't match" >&2
+					else
+						cat <<-EOF
+							INSERT INTO
+								ssh_key(type, key, name)
+							VALUES
+								('$type', '$key', '$comment')
+							ON CONFLICT DO NOTHING;
+						EOF
+					fi
+				elif [ "$key_name" != "$comment" ]; then
+					echo "WARNING: Key for $comment is known as $key_name. Please make sure this is correct." >&2
 				fi
-			elif [ "$key_name" != "$comment" ]; then
-				echo "WARNING: Key for $comment is known as $key_name. Please make sure this is correct." >&2
+				cat <<-EOF
+					INSERT INTO
+						server__ssh_key(server_name, ssh_key_name)
+					VALUES
+						('$server_name', '$key_name')
+					ON CONFLICT DO NOTHING;
+				EOF
 			fi
-			cat <<-EOF
-				INSERT INTO
-					server__ssh_key(server_name, ssh_key_name)
-				VALUES
-					('$server_name', '$key_name')
-				ON CONFLICT DO NOTHING;
-			EOF
 		done;
 		echo "COMMIT;"
 		echo "SELECT '[$server_name] OK';";
