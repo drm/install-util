@@ -1,3 +1,7 @@
+export INSTALL_UTIL_ROOT; INSTALL_UTIL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export UTIL_ROOT; UTIL_ROOT="${UTIL_ROOT:-"${INSTALL_UTIL_ROOT}/utils"}"
+export UTILS; UTILS="${UTILS:-$(cd "$UTIL_ROOT" && for f in *.sh; do echo "${f/.sh/}"; done)}"
+
 if [ "${BASH_VERSINFO:-0}" -lt 5 ]; then
 	echo "Needs at least bash version 5" >&2
 	if [ "${FORCE:-}" == "" ]; then
@@ -183,7 +187,7 @@ rsync() {
 
 ## Wrapper for 'scp' to use the project ssh config.
 scp() {
-	"$SCP" -F "$ROOT/ssh/config" $@
+	"$SCP" -F "$ROOT/ssh/config" "$@"
 }
 
 ## Increase debug level, or turn debugging off.
@@ -434,51 +438,9 @@ verify() {
 	done;
 }
 
-## Download SSH keys from each server into local database.
-fetch_keys() {
-	_query <<< "SELECT name, ssh FROM server WHERE ssh IS NOT NULL" | while IFS="|" read -r server_name ssh; do
-		echo "BEGIN;"
-		echo "DELETE FROM ssh_key WHERE server_name='$server_name';";
-		ssh "$ssh" /bin/bash <<< "cat ~/.ssh/authorized_keys" | sed 's/#.*//g' | awk NF | sort | while IFS=" " read -r type key comment; do
-			cat <<-EOF
-				INSERT INTO
-					ssh_key(server_name, type, key, comment)
-				VALUES
-					('$server_name', '$type', '$key', '$comment')
-				ON CONFLICT DO NOTHING;
-			EOF
-		done;
-		echo "COMMIT;"
-		echo "SELECT '[$server_name] OK';";
-	done | _query;
-}
-
-## Upload SSH keys to each server from management database. Note that this
-## doesn't provide for any safety net regarding throwing away your own
-## key, except for a manual confirmation of the changes.
-push_keys() {
-	local where="ssh IS NOT NULL";
-	if [ "${1:-}" != "" ]; then
-		where="name='$1'";
-	fi
-	local new;
-	local diff;
-	_query <<< "SELECT name, ssh FROM server WHERE $where" | while IFS="|" read -r server_name ssh; do
-		new="$(mktemp)"
-		trap "rm -f '""$new""'" EXIT
-		_query <<< "SELECT type || ' ' || key || ' ' || comment FROM ssh_key WHERE server_name='$server_name'" | sort > "$new"
-		diff="$(diff <(ssh -n "$ssh" cat \~/.ssh/authorized_keys | sort) "$new" || true)"
-		if [ "$diff" != "" ]; then
-			echo "$diff";
-			if _confirm "[$server_name] Continue applying changes? [y/N] "; then
-				scp -F "ssh/config" "$new" "$ssh":.ssh/authorized_keys
-			fi
-		else
-			echo "[$server_name] No changes"
-		fi
-	done
-}
-
+for u in $UTILS; do
+	source "$UTIL_ROOT/${u}.sh"
+done
 
 ## * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
 _prelude;

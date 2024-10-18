@@ -18,7 +18,7 @@ rm -f "$ROOT/config.db" && touch "$ROOT/config.db"
 source "$ROOT/../rc.sh"
 
 init-db() {
-	_query < "$ROOT/../schema.sql"
+	_query < "$ROOT/../sql/schema.sql"
 
 	for app in "$ROOT"/apps/*; do
 		if [ -f "$app/install.sh" ]; then
