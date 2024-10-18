@@ -99,7 +99,7 @@ _prelude() {
 		_check_prereq
 	fi
 
-	if [ -t 0 ] && [ "$(type -t help)" == "function" ]; then
+	if [ -t 0 ] && [ "${PRINT_HELP:-}" ] && [ "$(type -t help)" == "function" ]; then
 		echo "Welcome to the install-util shell. Type 'help' for help."
 	fi
 }
