@@ -120,7 +120,7 @@ _check_prereq() {
 	[ "$SQLITE" == "" ] && _fail "'sqlite3' is not found in the PATH..."
 	[ "$SSH" == "" ] && _fail "'ssh' is not found in the PATH..."
 	[ "$RSYNC" == "" ] && _fail "'rsync' is not found in the PATH..."
-	! [ -f "$CONFIG_DB" ] && _fail "$CONFIG_DB is not a file..."
+	! [ -f "$CONFIG_DB" ] && _fail "$CONFIG_DB is not a file. You will want to create it using sqlite3 $CONFIG_DB < $ROOT/install-util/sql/schema.sql"
 	return 0
 }
 
