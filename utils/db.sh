@@ -2,7 +2,7 @@ _query-select() {
 	local table="$1"
 	local where="${2:-1}"
 
-	_query <<< "SELECT * FROM $table WHERE $where"
+	_query -box <<< "SELECT * FROM $table WHERE $where"
 }
 
 
