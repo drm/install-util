@@ -103,3 +103,25 @@ ssh_import_key() {
 		EOF
 	fi
 }
+
+ssh_close_sockets() {
+	for f in "$(cd -P "$ROOT/ssh/sockets" && pwd)"/*; do
+		if test -S $f; then
+			echo "Closing existing ControlPath: $f"
+			ssh -O exit -o ControlPath=$f true || true
+		fi
+	done;
+}
+
+ssh_close-sgent() {
+	ssh-agent -k
+	ssh_close_sockets
+}
+
+ssh_agent() {
+	ssh_close_sockets
+	eval `ssh-agent`
+	ssh-add
+	trap close-agent EXIT
+}
+
