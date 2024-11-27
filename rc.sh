@@ -76,8 +76,11 @@ _prelude() {
 	export DEBUG="${DEBUG:-0}"
 	export HISTFILE="$ROOT/shell_history"
 	export FORCE="${FORCE:-}"
-	export CONFIG_DB="$ROOT/config.db"
 	export CONFIG_DB_SRC="$ROOT/config.db.sql"
+	if ! [ -f "$CONFIG_DB_SRC" ]; then
+		echo "Assuming first run, copying schema.sql to $CONFIG_DB_SRC" >&2
+		cp -v $INSTALL_UTIL_ROOT/sql/schema.sql "$CONFIG_DB_SRC"
+	fi
 	export PAGER="${PAGER:-$(which less)}"
 	if [ "${INSTALL_SCRIPT_NAMES:-}" ]; then
 		echo "INSTALL_SCRIPT_NAMES is defined, but it was renamed to 'DO' in v3.0" >&2
@@ -133,18 +136,62 @@ _check_prereq() {
 	[ "$SQLITE" == "" ] && _fail "'sqlite3' is not found in the PATH..."
 	[ "$SSH" == "" ] && _fail "'ssh' is not found in the PATH..."
 	[ "$RSYNC" == "" ] && _fail "'rsync' is not found in the PATH..."
-	! [ -f "$CONFIG_DB" ] && _fail "$CONFIG_DB is not a file. You will want to create it using sqlite3 $CONFIG_DB < $ROOT/install-util/sql/schema.sql"
 	return 0
 }
 
+# These functions are used to create a "connection" (temp file) to the database
+# and then writing the source file afterwards. This way we can keep the source
+# file as the "actual" database.
+__open_db() {
+	if [ "${__OPEN_DB:-}" != "" ]; then
+		echo "Can not open multiple connections to the database." >&2
+		return 1;
+	fi
+
+	local f; f=$(mktemp)
+	$SQLITE "$f" < "$CONFIG_DB_SRC"
+	echo "$f"
+
+	export __OPEN_DB="$f";
+}
+
+__close_db() {
+	local f="$1"
+	$SQLITE "$f" .dump > "$CONFIG_DB_SRC"
+	unset __OPEN_DB
+}
+
+db() {
+	local opts
+	if [ -t 0 ] || [ -t 1 ]; then
+		opts="-box"
+	fi
+
+	local db; db=$(__open_db)
+	local ret=0
+	(
+		sqlite3 $opts "$@" -init <(echo "PRAGMA foreign_keys=ON;") $db
+	) || true
+	ret="$?"
+	__close_db $db
+	return $ret;
+}
+
 _query() {
-	if [ "$DEBUG" -gt 0 ]; then
-		# copy all input to stderr as well.
-		# Note that tee /dev/stderr gives permission denied on some systems.
-		tee >(cat >&2)
-	else
-		cat -
-	fi | $SQLITE -init /dev/null -bail "$@" "$CONFIG_DB"
+	local db; db=$(__open_db)
+	local ret=0
+	(
+		if [ "$DEBUG" -gt 0 ]; then
+			# copy all input to stderr as well.
+			# Note that tee /dev/stderr gives permission denied on some systems.
+			tee >(cat >&2)
+		else
+			cat -
+		fi | $SQLITE -init /dev/null -bail "$@" "$db"
+	) || true
+	ret="$?"
+	__close_db $db
+	return $ret;
 }
 
 _confirm() {
@@ -160,19 +207,19 @@ _confirm() {
 _cfg_get_ip() {
 	local env="$1"
 	local app="$2"
-	_query <<<"SELECT ip FROM vw_app WHERE app_name='$app' AND env_name='$env'"
+	_query <<< "SELECT ip FROM vw_app WHERE app_name='$app' AND env_name='$env'"
 }
 
 ## Get the ssh name for the specified app and environment
 _cfg_get_ssh() {
-	_query <<<"SELECT ssh FROM server INNER JOIN deployment ON server_name=server.name WHERE app_name='${1}' AND env_name='${2}'"
+	_query <<< "SELECT ssh FROM server INNER JOIN deployment ON server_name=server.name WHERE app_name='${1}' AND env_name='${2}'"
 }
 
 ## Get the ssh prefix for the specified app and environment. Will return empty string
 ## if no ssh is configured
 _cfg_get_ssh_prefix() {
 	local ssh; ssh=$(_cfg_get_ssh "$1" "$2");
-	local sudo; sudo="$(_query <<<"SELECT CASE sudo WHEN true THEN 'sudo' END FROM server INNER JOIN deployment ON server_name=server.name WHERE app_name='${1}' AND env_name='${2}'" 2>/dev/null)"
+	local sudo; sudo="$(_query <<< "SELECT CASE sudo WHEN true THEN 'sudo' END FROM server INNER JOIN deployment ON server_name=server.name WHERE app_name='${1}' AND env_name='${2}'" 2>/dev/null)"
 	if [ "$ssh" != "" ]; then
 		shift 2;
 		echo "$SSH" -F "$SSH_CONFIG" "$* $ssh $sudo "
