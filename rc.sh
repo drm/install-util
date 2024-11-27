@@ -1,6 +1,7 @@
 export INSTALL_UTIL_ROOT; INSTALL_UTIL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export UTIL_ROOT; UTIL_ROOT="${UTIL_ROOT:-"${INSTALL_UTIL_ROOT}/utils"}"
 export UTILS; UTILS="${UTILS:-$(cd "$UTIL_ROOT" && for f in *.sh; do echo "${f/.sh/}"; done)}"
+export BASH_STARTUP_FLAGS="$-"
 
 if [ "${BASH_VERSINFO:-0}" -lt 5 ]; then
 	echo "Needs at least bash version 5" >&2
@@ -32,14 +33,18 @@ _add_declared_vars() {
 	echo "$__current_build_vars $(comm -1 -3 <(echo "$__names_before" | sort) <(echo "$__names_after" | sort))"
 }
 
+_is_debugging_global() {
+	[ "${BASH_STARTUP_FLAGS/x}" != "${BASH_STARTUP_FLAGS}" ]
+}
+
 debug_on() {
-	if [ "${DEBUG:-0}" -gt 1 ]; then
+	if ! _is_debugging_global && [ "${DEBUG:-0}" -gt 1 ]; then
 		set -x
  	fi		
 }
 
 debug_off() {
-	if [ "${DEBUG:-0}" -lt 3 ]; then
+	if ! _is_debugging_global && [ "${DEBUG:-0}" -lt 3 ]; then
 		set +x 
 	fi
 }
