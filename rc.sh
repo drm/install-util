@@ -178,7 +178,7 @@ db() {
 	local db; db=$(__open_db)
 	local ret=0
 	(
-		sqlite3 $opts "$@" -init <(echo "PRAGMA foreign_keys=ON;") $db
+		$SQLITE $opts "$@" -init <(echo "PRAGMA foreign_keys=ON;") $db
 	) || true
 	ret="$?"
 	__close_db $db
