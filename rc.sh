@@ -114,10 +114,18 @@ _prelude() {
 	if [ -t 0 ] && [ "${PRINT_HELP:-}" ] && [ "$(type -t help)" == "function" ]; then
 		echo "Welcome to the install-util shell. Type 'help' for help."
 	fi
+
+	local existing_trap; existing_trap="$(trap -p EXIT)"
+	# shellcheck disable=SC2064
+	trap "${existing_trap:+$existing_trap; }_exit" EXIT
 }
 
 _init() {
 	true; # noop, can be overridden in project.sh
+}
+
+_exit() {
+	true;
 }
 
 ## Helper to report an error and exit the shell.
