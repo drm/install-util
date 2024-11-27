@@ -72,6 +72,7 @@ _prelude() {
 	export HISTFILE="$ROOT/shell_history"
 	export FORCE="${FORCE:-}"
 	export CONFIG_DB="$ROOT/config.db"
+	export CONFIG_DB_SRC="$ROOT/config.db.sql"
 	export PAGER="${PAGER:-$(which less)}"
 	if [ "${INSTALL_SCRIPT_NAMES:-}" ]; then
 		echo "INSTALL_SCRIPT_NAMES is defined, but it was renamed to 'DO' in v3.0" >&2
@@ -95,6 +96,9 @@ _prelude() {
 		# batcat is not available, fallback to 'cat'
 		export SHOWSOURCE="cat";
 	fi
+	if [ "${SKIP_INIT:-}" == "" ]; then
+		_init
+	fi
 	if [ "${SKIP_PREREQ_CHECK:-}" == "" ]; then
 		_check_prereq
 	fi
@@ -102,6 +106,10 @@ _prelude() {
 	if [ -t 0 ] && [ "${PRINT_HELP:-}" ] && [ "$(type -t help)" == "function" ]; then
 		echo "Welcome to the install-util shell. Type 'help' for help."
 	fi
+}
+
+_init() {
+	true; # noop, can be overridden in project.sh
 }
 
 ## Helper to report an error and exit the shell.
