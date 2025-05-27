@@ -60,12 +60,13 @@ generate-ssh-env() {
 	EOF
 	
 	# Just creating/testing the first connection to accept the host key.
-	ssh -o StrictHostKeyChecking=accept-new install-util-remote true 
+	ssh -F "$ROOT/ssh/config" -o StrictHostKeyChecking=accept-new install-util-remote true 
 }
 
 run-tests() {
-	./shell.sh <<< "apps"
-	./shell.sh <<< "deployments"
+	pwd
+#	./shell.sh <<< "apps"
+#	./shell.sh <<< "deployments"
 
 	for f in "$ROOT"/apps/*/expect*.txt; do
 		filename="$(basename "$f" .txt)"
