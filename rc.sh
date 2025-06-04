@@ -211,12 +211,6 @@ _confirm() {
 	fi;
 }
 
-_cfg_get_ip() {
-	local env="$1"
-	local app="$2"
-	_query <<< "SELECT ip FROM vw_app WHERE app_name='$app' AND env_name='$env'"
-}
-
 ## Get the ssh name for the specified app and environment
 _cfg_get_ssh() {
 	_query <<< "SELECT ssh FROM server INNER JOIN deployment ON server_name=server.name WHERE app_name='${1}' AND env_name='${2}'"
