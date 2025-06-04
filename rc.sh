@@ -1,3 +1,8 @@
+export INSTALL_UTIL_ROOT; INSTALL_UTIL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export UTIL_ROOT; UTIL_ROOT="${UTIL_ROOT:-"${INSTALL_UTIL_ROOT}/utils"}"
+export UTILS; UTILS="${UTILS:-$(cd "$UTIL_ROOT" && for f in *.sh; do echo "${f/.sh/}"; done)}"
+export BASH_STARTUP_FLAGS="$-"
+
 if [ "${BASH_VERSINFO:-0}" -lt 5 ]; then
 	echo "Needs at least bash version 5" >&2
 	if [ "${FORCE:-}" == "" ]; then
@@ -28,14 +33,18 @@ _add_declared_vars() {
 	echo "$__current_build_vars $(comm -1 -3 <(echo "$__names_before" | sort) <(echo "$__names_after" | sort))"
 }
 
+_is_debugging_global() {
+	[ "${BASH_STARTUP_FLAGS/x}" != "${BASH_STARTUP_FLAGS}" ]
+}
+
 debug_on() {
-	if [ "${DEBUG:-0}" -gt 1 ]; then
+	if ! _is_debugging_global && [ "${DEBUG:-0}" -gt 1 ]; then
 		set -x
  	fi		
 }
 
 debug_off() {
-	if [ "${DEBUG:-0}" -lt 3 ]; then
+	if ! _is_debugging_global && [ "${DEBUG:-0}" -lt 3 ]; then
 		set +x 
 	fi
 }
@@ -67,12 +76,19 @@ _prelude() {
 	export DEBUG="${DEBUG:-0}"
 	export HISTFILE="$ROOT/shell_history"
 	export FORCE="${FORCE:-}"
-	export CONFIG_DB="$ROOT/config.db"
+	export CONFIG_DB_SRC="$ROOT/config.db.sql"
+	if ! [ -f "$CONFIG_DB_SRC" ]; then
+		echo "Assuming first run, copying schema.sql to $CONFIG_DB_SRC" >&2
+		cp -v $INSTALL_UTIL_ROOT/sql/schema.sql "$CONFIG_DB_SRC"
+	fi
 	export PAGER="${PAGER:-$(which less)}"
-	export INSTALL_SCRIPT_NAMES="${INSTALL_SCRIPT_NAMES:-${DO:-install status}}"
+	if [ "${INSTALL_SCRIPT_NAMES:-}" ]; then
+		echo "INSTALL_SCRIPT_NAMES is defined, but it was renamed to 'DO' in v3.0" >&2
+		exit 9;
+	fi
+	export DO="${DO:-install status}"
 	export BASH="${BASH:-/bin/bash}"
 
-	# In the future, for portability we might rather configure a command line to use mysql, psql or something else
 	export SQLITE; SQLITE="$(which sqlite3)"
 	export SSH; SSH="$(which ssh)"
 	export SSH_CONFIG; SSH_CONFIG="$(if [ -f "$ROOT/ssh/config" ]; then echo "$ROOT/ssh/config"; else echo "/dev/null"; fi)"
@@ -87,15 +103,28 @@ _prelude() {
 		# batcat is not available, fallback to 'cat'
 		export SHOWSOURCE="cat";
 	fi
+	if [ "${SKIP_INIT:-}" == "" ]; then
+		_init
+	fi
 	if [ "${SKIP_PREREQ_CHECK:-}" == "" ]; then
 		_check_prereq
 	fi
 
-	if [ "${INTERACTIVE:-}" == "1" ]; then
-		if test -f "$ROOT/resources/doc/header.md"; then
-			cat "$ROOT/resources/doc/header.md";
-		fi
+	if [ -t 0 ] && [ "${PRINT_HELP:-}" ] && [ "$(type -t help)" == "function" ]; then
+		echo "Welcome to the install-util shell. Type 'help' for help."
 	fi
+
+	local existing_trap; existing_trap="$(trap -p EXIT)"
+	# shellcheck disable=SC2064
+	trap "${existing_trap:+$existing_trap; }_exit" EXIT
+}
+
+_init() {
+	true; # noop, can be overridden in project.sh
+}
+
+_exit() {
+	true;
 }
 
 ## Helper to report an error and exit the shell.
@@ -114,18 +143,62 @@ _check_prereq() {
 	[ "$SQLITE" == "" ] && _fail "'sqlite3' is not found in the PATH..."
 	[ "$SSH" == "" ] && _fail "'ssh' is not found in the PATH..."
 	[ "$RSYNC" == "" ] && _fail "'rsync' is not found in the PATH..."
-	! [ -f "$CONFIG_DB" ] && _fail "$CONFIG_DB is not a file..."
 	return 0
 }
 
+# These functions are used to create a "connection" (temp file) to the database
+# and then writing the source file afterwards. This way we can keep the source
+# file as the "actual" database.
+__open_db() {
+	if [ "${__OPEN_DB:-}" != "" ]; then
+		echo "Can not open multiple connections to the database." >&2
+		return 1;
+	fi
+
+	local f; f=$(mktemp)
+	$SQLITE "$f" < "$CONFIG_DB_SRC"
+	echo "$f"
+
+	export __OPEN_DB="$f";
+}
+
+__close_db() {
+	local f="$1"
+	$SQLITE "$f" .dump > "$CONFIG_DB_SRC"
+	unset __OPEN_DB
+}
+
+db() {
+	local opts="";
+	if [ -t 0 ] || [ -t 1 ]; then
+		opts="-box"
+	fi
+
+	local db; db=$(__open_db)
+	local ret=0
+	(
+		$SQLITE $opts "$@" -init <(echo "PRAGMA foreign_keys=ON;") $db
+	) || true
+	ret="$?"
+	__close_db $db
+	return $ret;
+}
+
 _query() {
-	if [ "$DEBUG" -gt 0 ]; then
-		# copy all input to stderr as well.
-		# Note that tee /dev/stderr gives permission denied on some systems.
-		tee >(cat >&2)
-	else
-		cat -
-	fi | $SQLITE -init /dev/null -bail "$@" "$CONFIG_DB"
+	local db; db=$(__open_db)
+	local ret=0
+	(
+		if [ "$DEBUG" -gt 0 ]; then
+			# copy all input to stderr as well.
+			# Note that tee /dev/stderr gives permission denied on some systems.
+			tee >(cat >&2)
+		else
+			cat -
+		fi | $SQLITE -init /dev/null -bail "$@" "$db"
+	) || true
+	ret="$?"
+	__close_db $db
+	return $ret;
 }
 
 _confirm() {
@@ -138,22 +211,16 @@ _confirm() {
 	fi;
 }
 
-_cfg_get_ip() {
-	local env="$1"
-	local app="$2"
-	_query <<<"SELECT ip FROM vw_app WHERE app_name='$app' AND env_name='$env'"
-}
-
 ## Get the ssh name for the specified app and environment
 _cfg_get_ssh() {
-	_query <<<"SELECT ssh FROM server INNER JOIN deployment ON server_name=server.name WHERE app_name='${1}' AND env_name='${2}'"
+	_query <<< "SELECT ssh FROM server INNER JOIN deployment ON server_name=server.name WHERE app_name='${1}' AND env_name='${2}'"
 }
 
 ## Get the ssh prefix for the specified app and environment. Will return empty string
 ## if no ssh is configured
 _cfg_get_ssh_prefix() {
 	local ssh; ssh=$(_cfg_get_ssh "$1" "$2");
-	local sudo; sudo="$(_query <<<"SELECT CASE sudo WHEN true THEN 'sudo' END FROM server INNER JOIN deployment ON server_name=server.name WHERE app_name='${1}' AND env_name='${2}'" 2>/dev/null)"
+	local sudo; sudo="$(_query <<< "SELECT CASE sudo WHEN true THEN 'sudo' END FROM server INNER JOIN deployment ON server_name=server.name WHERE app_name='${1}' AND env_name='${2}'" 2>/dev/null)"
 	if [ "$ssh" != "" ]; then
 		shift 2;
 		echo "$SSH" -F "$SSH_CONFIG" "$* $ssh $sudo "
@@ -183,29 +250,7 @@ rsync() {
 
 ## Wrapper for 'scp' to use the project ssh config.
 scp() {
-	"$SCP" -F "$ROOT/ssh/config" $@
-}
-
-## Increase debug level, or turn debugging off.
-debug() {
-	if [ "${1:-}" == "off" ]; then
-		DEBUG="0"
-	else
-		DEBUG="$(( "$DEBUG" + 1 ))"
-	fi
-	_prelude
-	echo "Set debugging level to $DEBUG"
-}
-
-## Change current working environment.
-env() {
-	ENV="$1"
-	_prelude
-}
-
-## Dump current variables.
-vars() {
-	"$(which env)";
+	"$SCP" -F "$ROOT/ssh/config" "$@"
 }
 
 ## Perform deployment for all specified arguments.
@@ -259,7 +304,7 @@ install() {
 		local remote_wd;
 		remote_wd="$($shell <<< 'mkdir -p scripts && cd scripts && pwd')"
 
-		for script_name in $INSTALL_SCRIPT_NAMES; do
+		for script_name in $DO; do
 			local src_script="$ROOT/apps/$app/$script_name.sh"
 			local target_script="$artifacts/$script_name.sh"
 			[ "$DEBUG" -eq 0 ] || echo "Building script $src_script => $target_script"
@@ -310,7 +355,7 @@ install() {
 				echo "$x";
 				case "$REPLY" in
 					1)
-						for script_name in $INSTALL_SCRIPT_NAMES; do
+						for script_name in $DO; do
 							if [ -f "$artifacts/$script_name.sh" ]; then
 								$SHOWSOURCE "$artifacts/$script_name.sh";
 							fi
@@ -373,7 +418,7 @@ install() {
 		done;
 		
 		if [ "$DEBUG" -lt 3 ]; then
-			for script_name in $INSTALL_SCRIPT_NAMES; do
+			for script_name in $DO; do
 				if [ -f "$artifacts/$script_name.sh" ]; then
 					(
 						for subdir in resources artifacts; do
@@ -390,95 +435,9 @@ install() {
 	done;
 }
 
-## Show help.
-help() {
-	$PAGER "$ROOT"/README.md
-}
-
-## List all apps.
-apps() {
-	_query -header -list <<<"SELECT * FROM app" | column -t -s "|"
-}
-
-## List all deployments for the specified app.
-deployments() {
-	local where="true";
-	if [ "${1:-}" != "" ]; then
-		where="app_name='$1'"
-	fi
-	_query -header -list <<<"SELECT app_name, env_name, server_name, ssh FROM deployment INNER JOIN server ON server_name=server.name WHERE $where" | column -t -s "|"
-}
-
-## Refresh all server's ip's
-refresh_dns() {
-	_query <<<"SELECT name, hostname FROM server WHERE hostname IS NOT NULL" | while IFS="|" read -r name hostname; do
-		echo "UPDATE server SET ip='$(dig +short "$hostname" | tail -1)' WHERE name='$name';"
-	done | _query;
-}
-
-## Verify configurations
-verify() {
-	local app;
-	local d;
-	_query <<< "SELECT ssh FROM server WHERE ssh IS NOT NULL" | while read -r s; do
-		ssh -n "$s" echo "Hello from $s";
-	done;
-	for d in "$ROOT/apps/"*; do
-		app="$(basename "$d")"
-		echo "App '${app}' is configured in db: $(_query <<<"SELECT CASE WHEN COUNT(1) > 0 THEN 'YES' ELSE 'NO' END FROM app WHERE name='${app}'")";
-	done
-	_query <<< "SELECT app_name, env_name FROM deployment" | while IFS="|" read -r app_name env_name; do
-		shell="$(_cfg_get_shell "$app_name" "$env_name")"
-		$shell <<<"echo 'Hello from $shell'";
-		DEBUG=9 install "$app_name" "$env_name"
-	done;
-}
-
-## Download SSH keys from each server into local database.
-fetch_keys() {
-	_query <<< "SELECT name, ssh FROM server WHERE ssh IS NOT NULL" | while IFS="|" read -r server_name ssh; do
-		echo "BEGIN;"
-		echo "DELETE FROM ssh_key WHERE server_name='$server_name';";
-		ssh "$ssh" /bin/bash <<< "cat ~/.ssh/authorized_keys" | sed 's/#.*//g' | awk NF | sort | while IFS=" " read -r type key comment; do
-			cat <<-EOF
-				INSERT INTO
-					ssh_key(server_name, type, key, comment)
-				VALUES
-					('$server_name', '$type', '$key', '$comment')
-				ON CONFLICT DO NOTHING;
-			EOF
-		done;
-		echo "COMMIT;"
-		echo "SELECT '[$server_name] OK';";
-	done | _query;
-}
-
-## Upload SSH keys to each server from management database. Note that this
-## doesn't provide for any safety net regarding throwing away your own
-## key, except for a manual confirmation of the changes.
-push_keys() {
-	local where="ssh IS NOT NULL";
-	if [ "${1:-}" != "" ]; then
-		where="name='$1'";
-	fi
-	local new;
-	local diff;
-	_query <<< "SELECT name, ssh FROM server WHERE $where" | while IFS="|" read -r server_name ssh; do
-		new="$(mktemp)"
-		trap "rm -f '""$new""'" EXIT
-		_query <<< "SELECT type || ' ' || key || ' ' || comment FROM ssh_key WHERE server_name='$server_name'" | sort > "$new"
-		diff="$(diff <(ssh -n "$ssh" cat \~/.ssh/authorized_keys | sort) "$new" || true)"
-		if [ "$diff" != "" ]; then
-			echo "$diff";
-			if _confirm "[$server_name] Continue applying changes? [y/N] "; then
-				scp -F "ssh/config" "$new" "$ssh":.ssh/authorized_keys
-			fi
-		else
-			echo "[$server_name] No changes"
-		fi
-	done
-}
-
+for u in $UTILS; do
+	source "$UTIL_ROOT/${u}.sh"
+done
 
 ## * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
 _prelude;

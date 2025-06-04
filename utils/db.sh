@@ -2,7 +2,7 @@ _query-select() {
 	local table="$1"
 	local where="${2:-1}"
 
-	_query <<< "SELECT * FROM $table WHERE $where"
+	_query -box <<< "SELECT * FROM $table WHERE $where"
 }
 
 
@@ -26,4 +26,12 @@ _query-insert() {
 
 _query-add() {
 	_query-insert "$@"
+}
+
+_sql_in() {
+	local ret=""
+	for r in "$@"; do
+		ret="${ret:+$ret,}'$r'"
+	done
+	echo "$ret"
 }
