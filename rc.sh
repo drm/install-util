@@ -169,7 +169,7 @@ __close_db() {
 }
 
 db() {
-	local opts
+	local opts="";
 	if [ -t 0 ] || [ -t 1 ]; then
 		opts="-box"
 	fi
