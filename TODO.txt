@@ -1,10 +1,5 @@
-TODO's v3:
+TODO's v4:
 
-- Think of a better PS1; remove ENV from PS1; add DEBUG (?)
-- Remove implicit use (and therefore requirement) of ENV
 - Reconsider DEBUG levels
-- Reconsider 'INSTALL_SCRIPT_NAMES' (maybe simply rename with 'DO'?)
-- Reconsider '_cfg*' functions; maybe introduce a more concise SQL variant
-  which makes things easier to read
 - Remove exit confirmation on non-zero exit code (maybe just report it, possibly in the prompt)
 
