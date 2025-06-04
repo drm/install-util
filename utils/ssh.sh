@@ -22,6 +22,10 @@ ssh_fetch_keys() {
 		echo "BEGIN;"
 		echo "DELETE FROM server__ssh_key WHERE server_name='$server_name';";
 		ssh "$ssh" -n cat .ssh/authorized_keys | sed 's/#.*//g' | awk NF | sort | while IFS=" " read -r type key comment; do
+			if ! [ "$comment" ]; then
+				_fail "Missing comment for key: $type $key"
+			fi
+
 			if [ "$key" ]; then
 				local key_name="$(_query <<< "SELECT name FROM ssh_key WHERE key='$key'")"
 				if ! [ "$key_name" ]; then
