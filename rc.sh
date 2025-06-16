@@ -89,11 +89,11 @@ _prelude() {
 	export DO="${DO:-install status}"
 	export BASH="${BASH:-/bin/bash}"
 
-	export SQLITE; SQLITE="$(which sqlite3)"
-	export SSH; SSH="$(which ssh)"
+	export SQLITE; SQLITE="$(which sqlite3 || true)"
+	export SSH; SSH="$(which ssh || true)"
 	export SSH_CONFIG; SSH_CONFIG="$(if [ -f "$ROOT/ssh/config" ]; then echo "$ROOT/ssh/config"; else echo "/dev/null"; fi)"
-	export RSYNC; RSYNC="$(which rsync)"
-	export SCP; SCP="$(which scp)"
+	export RSYNC; RSYNC="$(which rsync || true)"
+	export SCP; SCP="$(which scp || true)"
 	export SHOWSOURCE; SHOWSOURCE="$(which batcat 2>/dev/null || which bat 2>/dev/null || true)"
 	if [ "$SHOWSOURCE" != "" ]; then
 		# batcat is available, add some flags
