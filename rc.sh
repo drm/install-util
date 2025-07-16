@@ -211,18 +211,22 @@ _confirm() {
 	fi;
 }
 
-## Get the ssh name for the specified app and environment
+_server_deployment_where() {
+	echo "app_name='${1}' AND env_name='${2}' AND node_id='${3:-0}'";
+}
+
+## Get the ssh name for the specified app, environment and node id
 _cfg_get_ssh() {
-	_query <<< "SELECT ssh FROM server INNER JOIN deployment ON server_name=server.name WHERE app_name='${1}' AND env_name='${2}'"
+	_query <<< "SELECT DISTINCT ssh FROM server INNER JOIN deployment ON server_name=server.name WHERE $(_server_deployment_where "$1" "$2" "${3:-0}")"
 }
 
 ## Get the ssh prefix for the specified app and environment. Will return empty string
 ## if no ssh is configured
 _cfg_get_ssh_prefix() {
-	local ssh; ssh=$(_cfg_get_ssh "$1" "$2");
-	local sudo; sudo="$(_query <<< "SELECT CASE sudo WHEN true THEN 'sudo' END FROM server INNER JOIN deployment ON server_name=server.name WHERE app_name='${1}' AND env_name='${2}'" 2>/dev/null)"
+	local ssh; ssh=$(_cfg_get_ssh "$1" "$2" "${3:-0}");
+	local sudo; sudo="$(_query <<< "SELECT CASE sudo WHEN true THEN 'sudo' END FROM server INNER JOIN deployment ON server_name=server.name WHERE  $(_server_deployment_where "$1" "$2" "${3:-0}")" 2>/dev/null)"
 	if [ "$ssh" != "" ]; then
-		shift 2;
+		shift 3;
 		echo "$SSH" -F "$SSH_CONFIG" "$* $ssh $sudo "
 	fi
 }
@@ -230,7 +234,7 @@ _cfg_get_ssh_prefix() {
 ## Get the shell for the specified deployment; i.e. prefix /bin/bash
 ## with the ssh prefix, if any.
 _cfg_get_shell() {
-	local prefix; prefix="$(_cfg_get_ssh_prefix "$1" "$2")"
+	local prefix; prefix="$(_cfg_get_ssh_prefix "$1" "$2" "${3:-}")"
 	if [ "$prefix" == "" ]; then
 		echo "$BASH"
 	else
@@ -260,7 +264,7 @@ install() {
 		if [ "$(_query <<<"SELECT COUNT(1) FROM app WHERE name='$app'")" != "1" ]; then
 			_fail "Invalid app name $app. Valid app names are: $(_query <<< "SELECT GROUP_CONCAT(DISTINCT app_name) FROM deployment")"
 		fi
-		if [ "$(_query <<<"SELECT COUNT(1) FROM deployment WHERE app_name='$app' AND env_name='$ENV'")" != "1" ]; then
+		if [ "$(_query <<<"SELECT COUNT(1) FROM deployment WHERE app_name='$app' AND env_name='$ENV'")" == "0" ]; then
 			_fail "No deployment for $app on $ENV. Valid deployments for $app are: $(_query <<< "SELECT GROUP_CONCAT(env_name, ', ') FROM deployment WHERE app_name='$app'")"
 		fi
 		if ! [ -f "$ROOT/apps/$app/install.sh" ]; then
@@ -269,169 +273,172 @@ install() {
 	done
 
 	for app in "$@"; do
-		local ssh; ssh="$(_cfg_get_ssh "$app" "$ENV")"
-		local shell; shell="$(_cfg_get_shell "$app" "$ENV")"
+		# deployments may have multiple nodes:
+		for node_id in $(_query <<< "SELECT node_id FROM deployment WHERE app_name='$app' AND env_name='$ENV'"); do
+			local ssh; ssh="$(_cfg_get_ssh "$app" "$ENV" "$node_id")"
+			local shell; shell="$(_cfg_get_shell "$app" "$ENV" "$node_id")"
 
-		if [ -f "$ROOT/vars.sh" ]; then
-			debug_off
-			vars_before="$(declare -p)"
-			# shellcheck disable=SC1091
-			source "$ROOT/vars.sh"
-			build_vars="$(_add_declared_vars "$build_vars" "$vars_before" "$(declare -p)")"
-			debug_on
-		fi
-
-		for subdir in resources artifacts; do
-			local $subdir="$ROOT/apps/$app/$subdir/"
-		done
-		artifacts="$artifacts/$ENV"
-		rm -rf "$artifacts"
-		mkdir -p "$artifacts"
-		local build_script="$ROOT/apps/$app/build.sh"
-		if [ -f "$build_script" ]; then
-			[ "$DEBUG" -eq 0 ] || echo "Calling build script: $build_script"
-
-			debug_off
-			vars_before="$(declare -p)"
-			# shellcheck disable=SC1090
-			source "$build_script"
-			build_vars="$(_add_declared_vars "$build_vars" "$vars_before" "$(declare -p)")"
-			debug_on
-		fi
-		# make the list unique
-		build_vars="$(for f in $build_vars; do echo "$f"; done | sort | uniq)"
-
-		local remote_wd;
-		remote_wd="$($shell <<< 'mkdir -p scripts && cd scripts && pwd')"
-
-		for script_name in $DO; do
-			local src_script="$ROOT/apps/$app/$script_name.sh"
-			local target_script="$artifacts/$script_name.sh"
-			[ "$DEBUG" -eq 0 ] || echo "Building script $src_script => $target_script"
-
-			if [ -f "$ROOT/apps/$app/$script_name.sh" ]; then
-				script_build_vars=""
-				for var in $build_vars; do
-					if ! [[ "$var" =~ ^[a-zA-Z0-9_]+$ ]]; then
-						_fail "Invalid build_var format: $var";
-					fi
-					# See if var is used, if not, skip it in the export.
-					if grep -E '[$][{]?'"$var"'\b' "$ROOT/apps/$app/$script_name.sh" >/dev/null; then
-						script_build_vars="$script_build_vars $var";
-					fi
-				done;
-
-				# subshell to scope 'artifacts' and 'resources' variables remotely different from locally.
-				(
-					for subdir in resources artifacts; do
-						local $subdir="$remote_wd/$app/$ENV/$subdir"
-					done
-					cat \
-						> "$target_script" \
-						<(cat \
-							<(cat <<-EOF
-								#!/usr/bin/env bash
-								set -euo pipefail
-								if [ "\${DEBUG:-0}" -gt 0 ]; then
-									set -x
-								fi
-							EOF
-							) \
-							<(for var in $script_build_vars; do
-								if [ -v var ] && [ -n "$var${var[*]}" ]; then
-									declare -p "$var"
-								fi
-							done ) \
-							"$src_script"
-						)
-					chmod +x "$target_script";
-				)
+			if [ -f "$ROOT/vars.sh" ]; then
+				debug_off
+				vars_before="$(declare -p)"
+				# shellcheck disable=SC1091
+				source "$ROOT/vars.sh"
+				build_vars="$(_add_declared_vars "$build_vars" "$vars_before" "$(declare -p)")"
+				debug_on
 			fi
-		done
 
-		if [ "$DEBUG" -ge 1 ]; then
-			PS3="How do you wish to proceed? "
-			select x in "Show script" "Show diff" "Continue install [on $shell]" "Exit"; do
-				echo "$x";
-				case "$REPLY" in
-					1)
-						for script_name in $DO; do
-							if [ -f "$artifacts/$script_name.sh" ]; then
-								$SHOWSOURCE "$artifacts/$script_name.sh";
-							fi
-						done;
-					;;
-					2)
-						for subdir in resources artifacts; do
-							local local_dir="${!subdir}"
-							local remote_dir="$remote_wd/$app/$ENV/$subdir"
+			for subdir in resources artifacts; do
+				local $subdir="$ROOT/apps/$app/$subdir/"
+			done
+			artifacts="$artifacts/$ENV"
+			rm -rf "$artifacts"
+			mkdir -p "$artifacts"
+			local build_script="$ROOT/apps/$app/build.sh"
+			if [ -f "$build_script" ]; then
+				[ "$DEBUG" -eq 0 ] || echo "Calling build script: $build_script"
 
-							if [ -d "$local_dir" ]; then
-								# subshell to keep cwd
-								(
-									cd "$local_dir" || exit 1;
-									find ./ -type f | while read -r f; do
-										f="${f:2}"
-										diff -s <($shell <<< "cat $remote_dir/$f") "$local_dir/$f" || true
-									done;
-								)
-							fi;
-						done
-					;;
-					3)
-						break
-					;;
-					4) exit; ;;
-					*) echo "Invalid selection. Please retry."; ;;
-				esac
-				# resets the prompt
-				REPLY=
-			done;
-			echo "$REPLY";
-			if [ "$REPLY" == "" ]; then
-				exit;
+				debug_off
+				vars_before="$(declare -p)"
+				# shellcheck disable=SC1090
+				source "$build_script"
+				build_vars="$(_add_declared_vars "$build_vars" "$vars_before" "$(declare -p)")"
+				debug_on
 			fi
-		fi;
+			# make the list unique
+			build_vars="$(for f in $build_vars; do echo "$f"; done | sort | uniq)"
 
-		for subdir in resources artifacts; do
-			local local_dir="${!subdir}"
-			local remote_dir="$remote_wd/$app/$ENV/$subdir"
+			local remote_wd;
+			remote_wd="$($shell <<< 'mkdir -p scripts && cd scripts && pwd')"
 
-			if [ -d "$local_dir" ] && [ "$(find "$local_dir" -type f | wc -l)" -gt 0 ]; then
-				rsync_opts=("-prL")
-				if [ "$DEBUG" -ge 3 ]; then
-					rsync_opts=("${rsync_opts[@]}" "-nv")
-				fi
-				if [ "$DEBUG" -lt 3 ]; then
-					if [ "$DEBUG" -lt 1 ]; then
-						$shell <<<"mkdir -p \"$remote_dir\""
-					else
-						$shell <<<"mkdir -pv \"$remote_dir\""
-					fi
-				fi
-				if [ "$ssh" != "" ]; then
-					rsync "${rsync_opts[@]}" "$local_dir/" "$ssh:$remote_dir/"
-				else
-					rsync "${rsync_opts[@]}" "$local_dir/" "$remote_dir/"
-				fi
-			fi
-		done;
-		
-		if [ "$DEBUG" -lt 3 ]; then
 			for script_name in $DO; do
-				if [ -f "$artifacts/$script_name.sh" ]; then
+				local src_script="$ROOT/apps/$app/$script_name.sh"
+				local target_script="$artifacts/$script_name.sh"
+				[ "$DEBUG" -eq 0 ] || echo "Building script $src_script => $target_script"
+
+				if [ -f "$ROOT/apps/$app/$script_name.sh" ]; then
+					script_build_vars=""
+					for var in $build_vars; do
+						if ! [[ "$var" =~ ^[a-zA-Z0-9_]+$ ]]; then
+							_fail "Invalid build_var format: $var";
+						fi
+						# See if var is used, if not, skip it in the export.
+						if grep -E '[$][{]?'"$var"'\b' "$ROOT/apps/$app/$script_name.sh" >/dev/null; then
+							script_build_vars="$script_build_vars $var";
+						fi
+					done;
+
+					# subshell to scope 'artifacts' and 'resources' variables remotely different from locally.
 					(
 						for subdir in resources artifacts; do
 							local $subdir="$remote_wd/$app/$ENV/$subdir"
 						done
-
-						DEBUG=$DEBUG ENV=$ENV $shell <<< "$artifacts/$script_name.sh";
+						cat \
+							> "$target_script" \
+							<(cat \
+								<(cat <<-EOF
+									#!/usr/bin/env bash
+									set -euo pipefail
+									if [ "\${DEBUG:-0}" -gt 0 ]; then
+										set -x
+									fi
+								EOF
+								) \
+								<(for var in $script_build_vars; do
+									if [ -v var ] && [ -n "$var${var[*]}" ]; then
+										declare -p "$var"
+									fi
+								done ) \
+								"$src_script"
+							)
+						chmod +x "$target_script";
 					)
 				fi
+			done
+
+			if [ "$DEBUG" -ge 1 ]; then
+				PS3="How do you wish to proceed? "
+				select x in "Show script" "Show diff" "Continue install [on $shell]" "Exit"; do
+					echo "$x";
+					case "$REPLY" in
+						1)
+							for script_name in $DO; do
+								if [ -f "$artifacts/$script_name.sh" ]; then
+									$SHOWSOURCE "$artifacts/$script_name.sh";
+								fi
+							done;
+						;;
+						2)
+							for subdir in resources artifacts; do
+								local local_dir="${!subdir}"
+								local remote_dir="$remote_wd/$app/$ENV/$subdir"
+
+								if [ -d "$local_dir" ]; then
+									# subshell to keep cwd
+									(
+										cd "$local_dir" || exit 1;
+										find ./ -type f | while read -r f; do
+											f="${f:2}"
+											diff -s <($shell <<< "cat $remote_dir/$f") "$local_dir/$f" || true
+										done;
+									)
+								fi;
+							done
+						;;
+						3)
+							break
+						;;
+						4) exit; ;;
+						*) echo "Invalid selection. Please retry."; ;;
+					esac
+					# resets the prompt
+					REPLY=
+				done;
+				echo "$REPLY";
+				if [ "$REPLY" == "" ]; then
+					exit;
+				fi
+			fi;
+
+			for subdir in resources artifacts; do
+				local local_dir="${!subdir}"
+				local remote_dir="$remote_wd/$app/$ENV/$subdir"
+
+				if [ -d "$local_dir" ] && [ "$(find "$local_dir" -type f | wc -l)" -gt 0 ]; then
+					rsync_opts=("-prL")
+					if [ "$DEBUG" -ge 3 ]; then
+						rsync_opts=("${rsync_opts[@]}" "-nv")
+					fi
+					if [ "$DEBUG" -lt 3 ]; then
+						if [ "$DEBUG" -lt 1 ]; then
+							$shell <<<"mkdir -p \"$remote_dir\""
+						else
+							$shell <<<"mkdir -pv \"$remote_dir\""
+						fi
+					fi
+					if [ "$ssh" != "" ]; then
+						rsync "${rsync_opts[@]}" "$local_dir/" "$ssh:$remote_dir/"
+					else
+						rsync "${rsync_opts[@]}" "$local_dir/" "$remote_dir/"
+					fi
+				fi
 			done;
-		else
-			echo "Skipping install, DEBUG is set to ${DEBUG}, and script will not run with DEBUG at a value higher than 2" ;
-		fi
+
+			if [ "$DEBUG" -lt 3 ]; then
+				for script_name in $DO; do
+					if [ -f "$artifacts/$script_name.sh" ]; then
+						(
+							for subdir in resources artifacts; do
+								local $subdir="$remote_wd/$app/$ENV/$subdir"
+							done
+
+							DEBUG=$DEBUG ENV=$ENV $shell <<< "$artifacts/$script_name.sh";
+						)
+					fi
+				done
+			else
+				echo "Skipping install, DEBUG is set to ${DEBUG}, and script will not run with DEBUG at a value higher than 2" ;
+			fi
+		done
 	done;
 }
 
