@@ -274,7 +274,11 @@ install() {
 
 	for app in "$@"; do
 		# deployments may have multiple nodes:
-		for node_id in $(_query <<< "SELECT node_id FROM deployment WHERE app_name='$app' AND env_name='$ENV'"); do
+		query="SELECT node_id FROM deployment WHERE app_name='$app' AND env_name='$ENV'"
+		if [ "${NODE_ID:-}" != "" ]; then
+			query="$query AND node_id='$NODE_ID'"
+		fi	
+		for node_id in $(_query <<< "$query"); do
 			local ssh; ssh="$(_cfg_get_ssh "$app" "$ENV" "$node_id")"
 			local shell; shell="$(_cfg_get_shell "$app" "$ENV" "$node_id")"
 
