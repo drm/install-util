@@ -359,7 +359,7 @@ install() {
 				fi
 			done
 
-			if [ "$DEBUG" -ge 1 ]; then
+			if [ "$DEBUG" -gt 1 ]; then
 				PS3="How do you wish to proceed? "
 				select x in "Show script" "Show diff" "Continue install [on $shell]" "Exit"; do
 					echo "$x";
@@ -427,21 +427,23 @@ install() {
 				fi
 			done;
 
-			if [ "$DEBUG" -lt 3 ]; then
-				for script_name in $DO; do
+			for script_name in $DO; do
+				if [ "$DEBUG" -lt 3 ]; then
 					if [ -f "$artifacts/$script_name.sh" ]; then
 						(
 							for subdir in resources artifacts; do
 								local $subdir="$remote_wd/$app/$ENV/$subdir"
 							done
-
+							if [ "$DEBUG" -gt 0 ]; then
+								echo "Executing $script_name on $ENV [node_id=$node_id, app=$app]" >&2 
+							fi
 							DEBUG=$DEBUG ENV=$ENV $shell <<< "$artifacts/$script_name.sh";
 						)
 					fi
-				done
-			else
-				echo "Skipping install, DEBUG is set to ${DEBUG}, and script will not run with DEBUG at a value higher than 2" ;
-			fi
+				else
+					echo "Skipping install, DEBUG is set to ${DEBUG}, and script will not run with DEBUG at a value higher than 2" >&2;
+				fi
+			done
 		done
 	done;
 }
