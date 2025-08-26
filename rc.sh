@@ -146,59 +146,45 @@ _check_prereq() {
 	return 0
 }
 
-# These functions are used to create a "connection" (temp file) to the database
-# and then writing the source file afterwards. This way we can keep the source
-# file as the "actual" database.
-__open_db() {
-	if [ "${__OPEN_DB:-}" != "" ]; then
-		echo "Can not open multiple connections to the database." >&2
-		return 1;
-	fi
-
-	local f; f=$(mktemp)
-	$SQLITE "$f" < "$CONFIG_DB_SRC"
-	echo "$f"
-
-	export __OPEN_DB="$f";
-}
-
-__close_db() {
-	local f="$1"
-	$SQLITE "$f" .dump > "$CONFIG_DB_SRC"
-	unset __OPEN_DB
-}
-
 db() {
+	local tmp_file="$(mktemp)"
+	local ret=0
 	local opts="";
+
 	if [ -t 0 ] || [ -t 1 ]; then
 		opts="-box"
 	fi
 
-	local db; db=$(__open_db)
-	local ret=0
-	(
-		$SQLITE $opts "$@" -init <(echo "PRAGMA foreign_keys=ON;") $db
-	) || true
-	ret="$?"
-	__close_db $db
-	return $ret;
+	if ! $SQLITE "$tmp_file" $opts "$@" -init <(
+		cat $CONFIG_DB_SRC;
+
+		echo "PRAGMA foreign_keys=ON;"
+	); then
+		ret="$!"
+	else
+		$SQLITE $tmp_file <<-EOF
+			.output $CONFIG_DB_SRC
+			.dump
+		EOF
+	fi	
+	rm -f $tmp_file
+	return $ret
 }
 
 _query() {
-	local db; db=$(__open_db)
-	local ret=0
-	(
-		if [ "$DEBUG" -gt 0 ]; then
-			# copy all input to stderr as well.
-			# Note that tee /dev/stderr gives permission denied on some systems.
-			tee >(cat >&2)
-		else
-			cat -
-		fi | $SQLITE -init /dev/null -bail "$@" "$db"
-	) || true
-	ret="$?"
-	__close_db $db
-	return $ret;
+	local query="$(cat)"
+	if [ "$DEBUG" -gt 0 ]; then
+		echo "$query" >&2
+	fi
+	$SQLITE -init /dev/null -bail "$@" < <(
+		cat $CONFIG_DB_SRC;
+		cat <<-EOF
+			$query;
+
+			.output $CONFIG_DB_SRC
+			.dump
+		EOF
+	)
 }
 
 _confirm() {
