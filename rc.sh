@@ -176,15 +176,16 @@ _query() {
 	if [ "$DEBUG" -gt 0 ]; then
 		echo "$query" >&2
 	fi
-	$SQLITE -init /dev/null -bail "$@" < <(
-		cat $CONFIG_DB_SRC;
+	contents="$(
 		cat <<-EOF
+			.read $CONFIG_DB_SRC
 			$query;
-
 			.output $CONFIG_DB_SRC
 			.dump
 		EOF
-	)
+	)"
+	echo -n ""
+	$SQLITE -init /dev/null -bail "$@" <<< "$contents"
 }
 
 _confirm() {
