@@ -179,6 +179,7 @@ _query() {
 	contents="$(
 		cat <<-EOF
 			.read $CONFIG_DB_SRC
+			PRAGMA foreign_keys=ON;
 			$query;
 			.output $CONFIG_DB_SRC
 			.dump
