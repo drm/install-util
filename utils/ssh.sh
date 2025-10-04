@@ -70,9 +70,14 @@ ssh_push_keys() {
 	_query <<< "SELECT name, ssh FROM server WHERE $where" | while IFS="|" read -r server_name ssh; do
 		echo "[$server_name] checking difference..."
 		new="$(mktemp)"
-		_query <<< "SELECT type || ' ' || key || ' ' || ssh_key.name FROM ssh_key INNER JOIN server__ssh_key ON ssh_key_name=ssh_key.name WHERE server_name='$server_name'" | sort > "$new"
-		existing="$(ssh -n "$ssh" cat .ssh/authorized_keys | sort)"
-		diff="$(diff <(echo "$existing") "$new" || true)"
+		_query <<< "SELECT type || ' ' || key || ' ' || ssh_key.name FROM ssh_key INNER JOIN server__ssh_key ON ssh_key_name=ssh_key.name WHERE server_name='$server_name'" \
+			| sort \
+			> "$new"
+		if ! existing="$(ssh -n "$ssh" cat .ssh/authorized_keys)"; then
+			echo "Failure getting ssh keys from '$ssh' [server_name=$server_name]" >&2
+			continue;
+		fi
+		diff="$(diff <(echo "$existing" | sort) "$new" || true)"
 		if [ "$diff" != "" ]; then
 			echo "$diff";
 			if _confirm "[$server_name] Continue applying changes? [y/N] "; then
