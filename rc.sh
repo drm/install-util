@@ -2,7 +2,6 @@ export INSTALL_UTIL_ROOT; INSTALL_UTIL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}"
 export UTIL_ROOT; UTIL_ROOT="${UTIL_ROOT:-"${INSTALL_UTIL_ROOT}/utils"}"
 export UTILS; UTILS="${UTILS:-$(cd "$UTIL_ROOT" && for f in *.sh; do echo "${f/.sh/}"; done)}"
 export BASH_STARTUP_FLAGS="$-"
-export SQLITE_READONLY="${SQLITE_READONLY:-}"
 
 if [ "${BASH_VERSINFO:-0}" -lt 5 ]; then
 	echo "Needs at least bash version 5" >&2
@@ -162,7 +161,7 @@ db() {
 		echo "PRAGMA foreign_keys=ON;"
 	); then
 		ret="$!"
-	elif ! [ "$SQLITE_READONLY" ]; then
+	else
 		$SQLITE $tmp_file <<-EOF
 			.output $CONFIG_DB_SRC
 			.dump
@@ -174,9 +173,23 @@ db() {
 
 _query() {
 	local query="$(cat)"
-	if [ "$DEBUG" -gt 0 ]; then
+	local is_transaction
+
+	is_transaction="$(grep -cP 'COMMIT;?\s*$' <<< "$query" || true)"
+
+	if [ "$is_transaction" == 0 ] && grep -P '\b(CREATE|ALTER|UPDATE|DELETE|INSERT)\b' <<< "$query" >/dev/null; then
+		echo "$query" >&2
+		cat <<-EOF >&2
+
+			WARNING: query seems to contain modification queries, but it's not
+			wrapped in a transaction. Note that change queries are not persisted
+			if they are not inside a transaction block.
+
+		EOF
+	elif [ "$DEBUG" -gt 0 ]; then
 		echo "$query" >&2
 	fi
+
 	contents="$(
 		cat <<-EOF
 			.read $CONFIG_DB_SRC
@@ -184,7 +197,7 @@ _query() {
 			$query;
 		EOF
 
-		if ! [ "$SQLITE_READONLY" ]; then
+		if [ "$is_transaction" != 0 ]; then
 			cat <<-EOF
 				.output $CONFIG_DB_SRC
 				.dump

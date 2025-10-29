@@ -21,7 +21,7 @@ _query-insert() {
 		values="$values '${!value}'"
 	done
 
-	_query <<< "PRAGMA foreign_keys=ON; INSERT INTO $table($columns) VALUES($values);"
+	_query <<< "PRAGMA foreign_keys=ON; BEGIN; INSERT INTO $table($columns) VALUES($values); COMMIT;"
 }
 
 _query-add() {
