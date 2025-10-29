@@ -200,19 +200,19 @@ _confirm() {
 }
 
 _server_deployment_where() {
-	echo "app_name='${1}' AND env_name='${2}' AND node_id='${3:-0}'";
+	echo "app_name='${1}' AND env_name='${2}' AND node_id='${3:-1}'";
 }
 
 ## Get the ssh name for the specified app, environment and node id
 _cfg_get_ssh() {
-	_query <<< "SELECT DISTINCT ssh FROM server INNER JOIN deployment ON server_name=server.name WHERE $(_server_deployment_where "$1" "$2" "${3:-0}")"
+	_query <<< "SELECT DISTINCT ssh FROM server INNER JOIN deployment ON server_name=server.name WHERE $(_server_deployment_where "$1" "$2" "${3:-1}")"
 }
 
 ## Get the ssh prefix for the specified app and environment. Will return empty string
 ## if no ssh is configured
 _cfg_get_ssh_prefix() {
 	local ssh; ssh=$(_cfg_get_ssh "$1" "$2" "${3:-0}");
-	local sudo; sudo="$(_query <<< "SELECT CASE sudo WHEN true THEN 'sudo' END FROM server INNER JOIN deployment ON server_name=server.name WHERE  $(_server_deployment_where "$1" "$2" "${3:-0}")" 2>/dev/null)"
+	local sudo; sudo="$(_query <<< "SELECT CASE sudo WHEN true THEN 'sudo' END FROM server INNER JOIN deployment ON server_name=server.name WHERE  $(_server_deployment_where "$1" "$2" "${3:-1}")" 2>/dev/null)"
 	if [ "$ssh" != "" ]; then
 		shift 3;
 		echo "$SSH" -F "$SSH_CONFIG" "$* $ssh $sudo "
