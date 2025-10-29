@@ -2,6 +2,7 @@ export INSTALL_UTIL_ROOT; INSTALL_UTIL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}"
 export UTIL_ROOT; UTIL_ROOT="${UTIL_ROOT:-"${INSTALL_UTIL_ROOT}/utils"}"
 export UTILS; UTILS="${UTILS:-$(cd "$UTIL_ROOT" && for f in *.sh; do echo "${f/.sh/}"; done)}"
 export BASH_STARTUP_FLAGS="$-"
+export SQLITE_READONLY="${SQLITE_READONLY:-}"
 
 if [ "${BASH_VERSINFO:-0}" -lt 5 ]; then
 	echo "Needs at least bash version 5" >&2
@@ -161,7 +162,7 @@ db() {
 		echo "PRAGMA foreign_keys=ON;"
 	); then
 		ret="$!"
-	else
+	elif ! [ "$SQLITE_READONLY" ]; then
 		$SQLITE $tmp_file <<-EOF
 			.output $CONFIG_DB_SRC
 			.dump
@@ -181,11 +182,15 @@ _query() {
 			.read $CONFIG_DB_SRC
 			PRAGMA foreign_keys=ON;
 			$query;
-			.output $CONFIG_DB_SRC
-			.dump
 		EOF
+
+		if ! [ "$SQLITE_READONLY" ]; then
+			cat <<-EOF
+				.output $CONFIG_DB_SRC
+				.dump
+			EOF
+		fi
 	)"
-	echo -n ""
 	$SQLITE -init /dev/null -bail "$@" <<< "$contents"
 }
 
