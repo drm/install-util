@@ -38,13 +38,13 @@ _is_debugging_global() {
 }
 
 debug_on() {
-	if ! _is_debugging_global && [ "${DEBUG:-0}" -gt 1 ]; then
+	if ! _is_debugging_global && [ "${DEBUG/X}" != "$DEBUG" ]; then
 		set -x
  	fi		
 }
 
 debug_off() {
-	if ! _is_debugging_global && [ "${DEBUG:-0}" -lt 3 ]; then
+	if ! _is_debugging_global && [ "${DEBUG/X}" != "$DEBUG" ]; then
 		set +x 
 	fi
 }
@@ -53,27 +53,39 @@ debug_off() {
 _prelude() {
 	local vars_before
 
-	debug_on
 	if [ "${ROOT:-}" == "" ]; then
 		echo "Missing ROOT. See README.md for details."
 		exit;
 	fi
 	export build_vars="DEBUG ENV VERSION resources artifacts"
 	if [ -f "$ROOT/project.sh" ]; then
-		debug_off
 		vars_before="$(declare -p)"
-		debug_on
-
 		# shellcheck disable=SC1091
 		source "$ROOT/project.sh"
-
-		debug_off
 		build_vars="$(_add_declared_vars "$build_vars" "$vars_before" "$(declare -p)")"
-		debug_on
 	fi
 	export PS1="server-config [$NAMESPACE] "
 	export PS4="+ \033[0;37m[debug]\033[0m"' $(date +"%Y-%m-%dT%H:%M:%S.%N") ${BASH_SOURCE:-1}:${LINENO:-} ${FUNCNAME[0]:-main}() - '
-	export DEBUG="${DEBUG:-0}"
+
+	# DEBUG contains debug flags:
+	# 	X - execute internal bash -x
+	#	x - execute scripts with bash -x
+	# 	s - print all SQL
+	#	i - print info messages
+	#	p - show prompts in vital stages
+	# 	O - all file operations (rsync, mkdir, etc)
+	# 	D - Dry-run, don't execute the scripts
+	#
+	# When in doubt, search this file for occurrences of DEBUG/C where C is the debug flag.
+	export DEBUG
+	if [ -v DEBUG ]; then
+		case "$DEBUG" in
+			1) DEBUG="ixp"; ;;
+			2) DEBUG="ixpSO"; ;;
+			3) DEBUG="ixpSOXD"; ;;
+		esac
+	fi
+	export DEBUG="${DEBUG:-}"
 	export HISTFILE="$ROOT/shell_history"
 	export FORCE="${FORCE:-}"
 	export CONFIG_DB_SRC="$ROOT/config.db.sql"
@@ -186,8 +198,8 @@ _query() {
 			if they are not inside a transaction block.
 
 		EOF
-	elif [ "$DEBUG" -gt 0 ]; then
-		echo "$query" >&2
+	elif [ "${DEBUG/s}" != "$DEBUG" ]; then
+		echo "[SQL] $(paste -sd" " <<< "$query")" >&2
 	fi
 
 	contents="$(
@@ -242,9 +254,12 @@ _cfg_get_ssh_prefix() {
 _cfg_get_shell() {
 	local prefix; prefix="$(_cfg_get_ssh_prefix "$1" "$2" "${3:-}")"
 	if [ "$prefix" == "" ]; then
-		echo "$BASH"
+		echo -n "$BASH"
 	else
-		echo "${prefix}/bin/bash"
+		echo -n "${prefix}/bin/bash"
+	fi
+	if [ "${DEBUG/X}" != "${DEBUG}" ]; then
+		echo -n " -x"
 	fi
 }
 
@@ -278,52 +293,72 @@ install() {
 		fi
 	done
 
+	local file_opts_verbose;
+	if [ "${DEBUG/O}" != "$DEBUG" ]; then
+		file_opts_verbose="v"
+	else
+		file_opts_verbose=""
+	fi
+
 	for app in "$@"; do
+		DROP_TO_SHELL=""
+
 		# deployments may have multiple nodes:
 		query="SELECT node_id FROM deployment WHERE app_name='$app' AND env_name='$ENV'"
 		if [ "${NODE_ID:-}" != "" ]; then
 			query="$query AND node_id='$NODE_ID'"
 		fi	
 		for node_id in $(_query <<< "$query"); do
+			_info() {
+				if [ "${DEBUG/i}" != "$DEBUG" ]; then
+					echo "[app=$app, node_id=$node_id, ENV=$ENV, DO=$DO]" "$@" >&2
+				fi
+			}
+
+			_info "Setting up"
+
 			local ssh; ssh="$(_cfg_get_ssh "$app" "$ENV" "$node_id")"
 			local shell; shell="$(_cfg_get_shell "$app" "$ENV" "$node_id")"
 
 			if [ -f "$ROOT/vars.sh" ]; then
-				debug_off
+				_info "Reading vars"
 				vars_before="$(declare -p)"
 				# shellcheck disable=SC1091
 				source "$ROOT/vars.sh"
 				build_vars="$(_add_declared_vars "$build_vars" "$vars_before" "$(declare -p)")"
-				debug_on
 			fi
 
 			for subdir in resources artifacts; do
-				local $subdir="$ROOT/apps/$app/$subdir/"
+				local $subdir="$ROOT/apps/$app/$subdir"
 			done
 			artifacts="$artifacts/$ENV"
-			rm -rf "$artifacts"
-			mkdir -p "$artifacts"
+			_info "Creating artifacts"
+			rm -rf${file_opts_verbose} "$artifacts"
+			mkdir -p${file_opts_verbose} "$artifacts"
 			local build_script="$ROOT/apps/$app/build.sh"
 			if [ -f "$build_script" ]; then
-				[ "$DEBUG" -eq 0 ] || echo "Calling build script: $build_script"
+				_info "Build script found: ${build_script/"$ROOT/"}"
 
-				debug_off
 				vars_before="$(declare -p)"
 				# shellcheck disable=SC1090
 				source "$build_script"
 				build_vars="$(_add_declared_vars "$build_vars" "$vars_before" "$(declare -p)")"
-				debug_on
 			fi
 			# make the list unique
 			build_vars="$(for f in $build_vars; do echo "$f"; done | sort | uniq)"
 
 			local remote_wd;
-			remote_wd="$($shell <<< 'mkdir -p scripts && cd scripts && pwd')"
+			remote_wd="$($shell <<< "mkdir -p${file_opts_verbose} scripts && cd scripts && pwd")"
+
+			debug_on
 
 			for script_name in $DO; do
+				_info "Entering DO=$script_name"
+
 				local src_script="$ROOT/apps/$app/$script_name.sh"
 				local target_script="$artifacts/$script_name.sh"
-				[ "$DEBUG" -eq 0 ] || echo "Building script $src_script => $target_script"
+
+				_info "Building script '${src_script/"$ROOT/"}' => '${target_script/"$ROOT/"}'" >&2
 
 				if [ -f "$ROOT/apps/$app/$script_name.sh" ]; then
 					script_build_vars=""
@@ -348,7 +383,9 @@ install() {
 								<(cat <<-EOF
 									#!/usr/bin/env bash
 									set -euo pipefail
-									if [ "\${DEBUG:-0}" -gt 0 ]; then
+									export DEBUG="${DEBUG}"
+
+									if [ "\${DEBUG/x}" != "$DEBUG" ]; then
 										set -x
 									fi
 								EOF
@@ -360,14 +397,25 @@ install() {
 								done ) \
 								"$src_script"
 							)
-						chmod +x "$target_script";
+
+						_info "Written ${target_script/"$ROOT/"}"
+
+						if [ "$file_opts_verbose" ]; then
+							chmod +x -v "$target_script";
+						else
+							chmod +x "$target_script";
+						fi
 					)
 				fi
 			done
 
-			if [ "$DEBUG" -gt 1 ]; then
+			if [ "${DEBUG/p}" != "$DEBUG" ]; then
+				debug_off
+				echo "=== ${artifacts/"$ROOT/"} ===="
+				ls -l $artifacts
+				echo ""
 				PS3="How do you wish to proceed? "
-				select x in "Show script" "Show diff" "Continue install [on $shell]" "Exit"; do
+				select x in "Show script(s)" "Drop to shell in '${artifacts/"$ROOT/"}'" "Continue install [on $shell]" "Continue and drop to remote shell" "Continue and disable further prompting." "Exit";  do
 					echo "$x";
 					case "$REPLY" in
 						1)
@@ -378,26 +426,21 @@ install() {
 							done;
 						;;
 						2)
-							for subdir in resources artifacts; do
-								local local_dir="${!subdir}"
-								local remote_dir="$remote_wd/$app/$ENV/$subdir"
-
-								if [ -d "$local_dir" ]; then
-									# subshell to keep cwd
-									(
-										cd "$local_dir" || exit 1;
-										find ./ -type f | while read -r f; do
-											f="${f:2}"
-											diff -s <($shell <<< "cat $remote_dir/$f") "$local_dir/$f" || true
-										done;
-									)
-								fi;
-							done
+							echo "Dropping to shell. Either use CTRL+D or type exit [enter] to return."
+							( cd $artifacts && $BASH -i )
 						;;
 						3)
 							break
 						;;
-						4) exit; ;;
+						4)
+							DROP_TO_SHELL=1
+							break
+							;;
+						5)
+							export DEBUG="${DEBUG/p}"
+							break
+						;;
+						6|q|x) exit; ;;
 						*) echo "Invalid selection. Please retry."; ;;
 					esac
 					# resets the prompt
@@ -409,22 +452,15 @@ install() {
 				fi
 			fi;
 
+			debug_on
+
 			for subdir in resources artifacts; do
 				local local_dir="${!subdir}"
 				local remote_dir="$remote_wd/$app/$ENV/$subdir"
 
 				if [ -d "$local_dir" ] && [ "$(find "$local_dir" -type f | wc -l)" -gt 0 ]; then
-					rsync_opts=("-prL")
-					if [ "$DEBUG" -ge 3 ]; then
-						rsync_opts=("${rsync_opts[@]}" "-nv")
-					fi
-					if [ "$DEBUG" -lt 3 ]; then
-						if [ "$DEBUG" -lt 1 ]; then
-							$shell <<<"mkdir -p \"$remote_dir\""
-						else
-							$shell <<<"mkdir -pv \"$remote_dir\""
-						fi
-					fi
+					rsync_opts=("-prL${file_opts_verbose}")
+					$shell <<<"mkdir -p${file_opts_verbose} \"$remote_dir\""
 					if [ "$ssh" != "" ]; then
 						rsync "${rsync_opts[@]}" "$local_dir/" "$ssh:$remote_dir/"
 					else
@@ -433,21 +469,34 @@ install() {
 				fi
 			done;
 
+			if [ "${DEBUG/i}" ]; then
+				echo "Artifacts sync'ed to remote at $remote_dir"
+			fi
+
 			for script_name in $DO; do
-				if [ "$DEBUG" -lt 3 ]; then
-					if [ -f "$artifacts/$script_name.sh" ]; then
-						(
-							for subdir in resources artifacts; do
-								local $subdir="$remote_wd/$app/$ENV/$subdir"
-							done
-							if [ "$DEBUG" -gt 0 ]; then
-								echo "Executing $script_name on $ENV [node_id=$node_id, app=$app]" >&2 
+				if [ -f "$artifacts/$script_name.sh" ]; then
+					(
+						for subdir in resources artifacts; do
+							local $subdir="$remote_wd/$app/$ENV/$subdir"
+						done
+						if [ "$DROP_TO_SHELL" ]; then
+							echo "Artifacts are in: $artifacts"
+							$shell -i
+						fi
+						if [ "${DEBUG/D}" != "$DEBUG" ]; then
+							echo "Not executing remote script, as (D)ry-run debug flag is set."
+							cat <<-EOF
+								$shell <<< "export DEBUG=$DEBUG; export ENV=$ENV; $artifacts/$script_name.sh";
+							EOF
+						else
+							if [ "${DEBUG/i}" != "${DEBUG}" ]; then
+								_info "Executing $artifacts/$script_name.sh" >&2
 							fi
-							DEBUG=$DEBUG ENV=$ENV $shell <<< "$artifacts/$script_name.sh";
-						)
-					fi
-				else
-					echo "Skipping install, DEBUG is set to ${DEBUG}, and script will not run with DEBUG at a value higher than 2" >&2;
+							$shell <<< "export DEBUG=$DEBUG; export ENV=$ENV; $artifacts/$script_name.sh";
+						fi
+					)
+				elif [ "${DEBUG/i}" != "${DEBUG}" ]; then
+					echo "Skipping DO=$DO, $artifacts/$script_name does not exist"
 				fi
 			done
 		done
