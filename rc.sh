@@ -235,7 +235,7 @@ _server_deployment_where() {
 
 ## Get the ssh name for the specified app, environment and node id
 _cfg_get_ssh() {
-	_query <<< "SELECT DISTINCT ssh FROM server INNER JOIN deployment ON server_name=server.name WHERE $(_server_deployment_where "$1" "$2" "${3:-1}")"
+	_query <<< "SELECT DISTINCT name FROM server INNER JOIN deployment ON server_name=server.name WHERE $(_server_deployment_where "$1" "$2" "${3:-1}")"
 }
 
 ## Get the ssh prefix for the specified app and environment. Will return empty string

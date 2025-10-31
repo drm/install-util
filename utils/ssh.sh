@@ -18,10 +18,10 @@ ssh_verify() {
 
 ## Download SSH keys from each server into local database.
 ssh_fetch_keys() {
-	_query <<< "SELECT name, ssh FROM server WHERE ssh IS NOT NULL" | while IFS="|" read -r server_name ssh; do
+	_query <<< "SELECT name FROM server WHERE name <> 'local'" | while IFS="|" read -r server_name ssh; do
 		echo "BEGIN;"
 		echo "DELETE FROM server__ssh_key WHERE server_name='$server_name';";
-		ssh "$ssh" -n cat .ssh/authorized_keys | sed 's/#.*//g' | awk NF | sort | while IFS=" " read -r type key comment; do
+		ssh "$server_name" -n cat .ssh/authorized_keys | sed 's/#.*//g' | awk NF | sort | while IFS=" " read -r type key comment; do
 			if ! [ "$comment" ]; then
 				_fail "Missing comment for key: $type $key"
 			fi
@@ -64,24 +64,26 @@ ssh_push_keys() {
 	local where="ssh IS NOT NULL";
 	if [ "${1:-}" != "" ]; then
 		where="name='$1'";
+	else
+		where="name <> 'local'"
 	fi
 	local new;
 	local diff;
-	_query <<< "SELECT name, ssh FROM server WHERE $where" | while IFS="|" read -r server_name ssh; do
+	_query <<< "SELECT name FROM server WHERE $where" | while IFS="|" read -r server_name; do
 		echo "[$server_name] checking difference..."
 		new="$(mktemp)"
 		_query <<< "SELECT type || ' ' || key || ' ' || ssh_key.name FROM ssh_key INNER JOIN server__ssh_key ON ssh_key_name=ssh_key.name WHERE server_name='$server_name'" \
 			| sort \
 			> "$new"
-		if ! existing="$(ssh -n "$ssh" cat .ssh/authorized_keys)"; then
-			echo "Failure getting ssh keys from '$ssh' [server_name=$server_name]" >&2
+		if ! existing="$(ssh -n "$server_name" cat .ssh/authorized_keys)"; then
+			echo "Failure getting ssh keys from '$server_name'" >&2
 			continue;
 		fi
 		diff="$(diff <(echo "$existing" | sort) "$new" || true)"
 		if [ "$diff" != "" ]; then
 			echo "$diff";
 			if _confirm "[$server_name] Continue applying changes? [y/N] "; then
-				scp -F "ssh/config" "$new" "$ssh":.ssh/authorized_keys
+				scp -F "ssh/config" "$new" "$server_name":.ssh/authorized_keys
 			fi
 		else
 			echo "[$server_name] No changes"
