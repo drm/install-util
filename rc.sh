@@ -472,9 +472,7 @@ install() {
 				fi
 			done;
 
-			if [ "${DEBUG/i}" ]; then
-				echo "Artifacts sync'ed to remote at $remote_dir"
-			fi
+			_info "Artifacts sync'ed to remote at $remote_dir"
 
 			for script_name in $DO; do
 				if [ -f "$artifacts/$script_name.sh" ]; then
@@ -483,11 +481,11 @@ install() {
 							local $subdir="$remote_wd/$app/$ENV/$subdir"
 						done
 						if [ "$DROP_TO_SHELL" ]; then
-							echo "Artifacts are in: $artifacts"
+							_info "Artifacts are in: $artifacts"
 							$shell -i
 						fi
 						if [ "${DEBUG/D}" != "$DEBUG" ]; then
-							echo "Not executing remote script, as (D)ry-run debug flag is set."
+							_info "Not executing remote script, as (D)ry-run debug flag is set."
 							cat <<-EOF
 								$shell <<< "export DEBUG=$DEBUG; export ENV=$ENV; $artifacts/$script_name.sh";
 							EOF
