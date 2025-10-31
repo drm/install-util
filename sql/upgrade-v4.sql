@@ -2,7 +2,7 @@ CREATE TABLE _deployment(
     app_name text,
     env_name text,
     server_name text,
-    node_id int not null default 0,
+    node_id int not null default 1 CHECK (node_id >= 1),
 
     foreign key(app_name) references app(name),
     foreign key(env_name) references env(name),
