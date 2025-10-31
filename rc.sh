@@ -63,6 +63,7 @@ _prelude() {
 		# shellcheck disable=SC1091
 		source "$ROOT/project.sh"
 		build_vars="$(_add_declared_vars "$build_vars" "$vars_before" "$(declare -p)")"
+		vars_before=""
 	fi
 	export PS1="server-config [$NAMESPACE] "
 	export PS4="+ \033[0;37m[debug]\033[0m"' $(date +"%Y-%m-%dT%H:%M:%S.%N") ${BASH_SOURCE:-1}:${LINENO:-} ${FUNCNAME[0]:-main}() - '
@@ -326,6 +327,7 @@ install() {
 				# shellcheck disable=SC1091
 				source "$ROOT/vars.sh"
 				build_vars="$(_add_declared_vars "$build_vars" "$vars_before" "$(declare -p)")"
+				vars_before=""
 			fi
 
 			for subdir in resources artifacts; do
@@ -343,6 +345,7 @@ install() {
 				# shellcheck disable=SC1090
 				source "$build_script"
 				build_vars="$(_add_declared_vars "$build_vars" "$vars_before" "$(declare -p)")"
+				vars_before=""
 			fi
 			# make the list unique
 			build_vars="$(for f in $build_vars; do echo "$f"; done | sort | uniq)"
