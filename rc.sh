@@ -462,7 +462,7 @@ install() {
 				local remote_dir="$remote_wd/$app/$ENV/$subdir"
 
 				if [ -d "$local_dir" ] && [ "$(find "$local_dir" -type f | wc -l)" -gt 0 ]; then
-					rsync_opts=("-prL${file_opts_verbose}")
+					rsync_opts=("-prL${file_opts_verbose}" "--delete")
 					$shell <<<"mkdir -p${file_opts_verbose} \"$remote_dir\""
 					if [ "$ssh" != "" ]; then
 						rsync "${rsync_opts[@]}" "$local_dir/" "$ssh:$remote_dir/"
