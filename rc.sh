@@ -497,7 +497,7 @@ install() {
 						fi
 					)
 				elif [ "${DEBUG/i}" != "${DEBUG}" ]; then
-					echo "Skipping DO=$DO, $artifacts/$script_name does not exist"
+					_info "Skipping DO=$DO, $artifacts/$script_name does not exist"
 				fi
 			done
 		done
