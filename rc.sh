@@ -40,12 +40,12 @@ _is_debugging_global() {
 debug_on() {
 	if ! _is_debugging_global && [ "${DEBUG/X}" != "$DEBUG" ]; then
 		set -x
- 	fi		
+ 	fi
 }
 
 debug_off() {
 	if ! _is_debugging_global && [ "${DEBUG/X}" != "$DEBUG" ]; then
-		set +x 
+		set +x
 	fi
 }
 
@@ -179,7 +179,7 @@ db() {
 			.output $CONFIG_DB_SRC
 			.dump
 		EOF
-	fi	
+	fi
 	rm -f $tmp_file
 	return $ret
 }
@@ -308,7 +308,7 @@ install() {
 		query="SELECT node_id FROM deployment WHERE app_name='$app' AND env_name='$ENV'"
 		if [ "${NODE_ID:-}" != "" ]; then
 			query="$query AND node_id='$NODE_ID'"
-		fi	
+		fi
 		for node_id in $(_query <<< "$query"); do
 			_info() {
 				if [ "${DEBUG/i}" != "$DEBUG" ]; then

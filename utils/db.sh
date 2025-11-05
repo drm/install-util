@@ -14,7 +14,7 @@ _query-insert() {
 	for name in $(_query <<< "PRAGMA table_info($table);" | awk -F "|" '{print $2}'); do
 		if [ "$columns" != "" ]; then columns="$columns,"; fi;
 		if [ "$values" != "" ]; then values="$values,"; fi;
-		
+
 		read -p "$name: " val_$name;
 		value="val_${name}"
 		columns="$columns $name"

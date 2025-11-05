@@ -1,0 +1,13 @@
+# Root EditorConfig file
+root = true
+
+# Default settings
+[*]
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# Shell scripts
+[*.sh]
+indent_style = tab
+indent_size = tab

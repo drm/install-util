@@ -47,7 +47,7 @@ init-db() {
 generate-ssh-env() {
 	trap 'docker rm -f install-util-remote >/dev/null 2>&1' EXIT
 	./install.sh local remote-docker
-	  
+
 	docker cp "install-util-remote:/root/.ssh/id_rsa" "$ROOT/ssh/id_rsa"
 	rm -f "$ROOT/ssh/known_hosts"
 	cat <<-EOF > "$ROOT"/ssh/config
@@ -58,9 +58,9 @@ generate-ssh-env() {
 	  IdentityFile $ROOT/ssh/id_rsa
 	  UserKnownHostsFile $ROOT/ssh/known_hosts
 	EOF
-	
+
 	# Just creating/testing the first connection to accept the host key.
-	ssh -o StrictHostKeyChecking=accept-new install-util-remote true 
+	ssh -o StrictHostKeyChecking=accept-new install-util-remote true
 }
 
 run-tests() {
