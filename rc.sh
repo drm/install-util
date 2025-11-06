@@ -72,6 +72,7 @@ _prelude() {
 	# 	X - execute internal bash -x
 	#	x - execute scripts with bash -x
 	# 	s - print all SQL
+	# 	v - print var declarations used in scripts
 	#	i - print info messages
 	#	p - show prompts in vital stages
 	# 	O - all file operations (rsync, mkdir, etc)
@@ -82,8 +83,8 @@ _prelude() {
 	if [ -v DEBUG ]; then
 		case "$DEBUG" in
 			1) DEBUG="ixp"; ;;
-			2) DEBUG="ixpSO"; ;;
-			3) DEBUG="ixpSOXD"; ;;
+			2) DEBUG="ixpvSO"; ;;
+			3) DEBUG="ixpvSOXD"; ;;
 		esac
 	fi
 	export DEBUG="${DEBUG:-}"
@@ -360,6 +361,7 @@ install() {
 
 				local src_script="$ROOT/apps/$app/$script_name.sh"
 				local target_script="$artifacts/$script_name.sh"
+				local declaration_block=""
 
 				_info "Building script '${src_script/"$ROOT/"}' => '${target_script/"$ROOT/"}'" >&2
 
@@ -380,6 +382,21 @@ install() {
 						for subdir in resources artifacts; do
 							local $subdir="$remote_wd/$app/$ENV/$subdir"
 						done
+
+						declaration_block="$(
+							for var in $script_build_vars; do
+								if [ -v var ] && [ -n "$var${var[*]}" ]; then
+									declare -p "$var"
+								fi
+							done
+						)"
+
+						if [ "${DEBUG/v}" != "$DEBUG" ]; then
+							echo "------------------"
+							echo "$declaration_block"
+							echo "------------------"
+						fi
+
 						cat \
 							> "$target_script" \
 							<(cat \
@@ -393,11 +410,7 @@ install() {
 									fi
 								EOF
 								) \
-								<(for var in $script_build_vars; do
-									if [ -v var ] && [ -n "$var${var[*]}" ]; then
-										declare -p "$var"
-									fi
-								done ) \
+								<(echo "$declaration_block") \
 								"$src_script"
 							)
 
