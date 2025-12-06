@@ -310,6 +310,9 @@ install() {
 		if [ "${NODE_ID:-}" != "" ]; then
 			query="$query AND node_id='$NODE_ID'"
 		fi
+		if [ "${ROLE:-}" != "" ]; then
+			query="$query AND role='$ROLE'"
+		fi
 		for node_id in $(_query <<< "$query"); do
 			_info() {
 				if [ "${DEBUG/i}" != "$DEBUG" ]; then
