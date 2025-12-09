@@ -68,23 +68,35 @@ _prelude() {
 	export PS1="server-config [$NAMESPACE] "
 	export PS4="+ \033[0;37m[debug]\033[0m"' $(date +"%Y-%m-%dT%H:%M:%S.%N") ${BASH_SOURCE:-1}:${LINENO:-} ${FUNCNAME[0]:-main}() - '
 
-	# DEBUG contains debug flags:
-	# 	X - execute internal bash -x
-	#	x - execute scripts with bash -x
-	# 	s - print all SQL
-	# 	v - print var declarations used in scripts
-	#	i - print info messages
-	#	p - show prompts in vital stages
-	# 	O - all file operations (rsync, mkdir, etc)
-	# 	D - Dry-run, don't execute the scripts
-	#
-	# When in doubt, search this file for occurrences of DEBUG/C where C is the debug flag.
 	export DEBUG
 	if [ -v DEBUG ]; then
 		case "$DEBUG" in
 			1) DEBUG="ixp"; ;;
 			2) DEBUG="ixpvSO"; ;;
 			3) DEBUG="ixpvSOXD"; ;;
+			"?")
+				cat <<-EOF
+					DEBUG contains debug flags:
+
+					 X - execute internal bash -x
+					 x - execute scripts with bash -x
+					 s - print all SQL
+					 v - print var declarations used in scripts
+					 i - print info messages
+					 p - show prompts in vital stages
+					 O - make file operations verbose (rsync, mkdir, etc)
+					 D - Dry-run, don't execute the scripts
+					 ? - Show this message
+
+					Shortcuts are:
+
+					 1 - ixp
+					 2 - ixpvSO
+					 3 - ixpvSOXD
+
+					When in doubt, search '${BASH_SOURCE[0]/$ROOT\//}' for occurrences of DEBUG/C
+					where C is the debug flag.
+				EOF
 		esac
 	fi
 	export DEBUG="${DEBUG:-}"
