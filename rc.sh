@@ -404,7 +404,7 @@ install() {
 					# subshell to scope 'artifacts' and 'resources' variables remotely different from locally.
 					(
 						for subdir in resources artifacts; do
-							local $subdir="$remote_wd/$app/$ENV/$subdir"
+							local $subdir="$remote_wd/$app/$ENV/$node_id/$subdir"
 						done
 
 						declaration_block="$(
@@ -496,7 +496,7 @@ install() {
 
 			for subdir in resources artifacts; do
 				local local_dir="${!subdir}"
-				local remote_dir="$remote_wd/$app/$ENV/$subdir"
+				local remote_dir="$remote_wd/$app/$ENV/$node_id/$subdir"
 
 				if [ -d "$local_dir" ] && [ "$(find "$local_dir" -type f | wc -l)" -gt 0 ]; then
 					rsync_opts=("-prL${file_opts_verbose}" "--delete")
@@ -515,7 +515,7 @@ install() {
 				if [ -f "$artifacts/$script_name.sh" ]; then
 					(
 						for subdir in resources artifacts; do
-							local $subdir="$remote_wd/$app/$ENV/$subdir"
+							local $subdir="$remote_wd/$app/$ENV/$node_id/$subdir"
 						done
 						if [ "$DROP_TO_SHELL" ]; then
 							_info "Artifacts are in: $artifacts"
