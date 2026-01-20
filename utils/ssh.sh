@@ -61,7 +61,7 @@ ssh_fetch_keys() {
 ## doesn't provide for any safety net regarding throwing away your own
 ## key, except for a manual confirmation of the changes.
 ssh_push_keys() {
-	local where="ssh IS NOT NULL";
+	local where
 	if [ "${1:-}" != "" ]; then
 		where="name='$1'";
 	else
@@ -79,14 +79,19 @@ ssh_push_keys() {
 			echo "Failure getting ssh keys from '$server_name'" >&2
 			continue;
 		fi
-		diff="$(diff <(echo "$existing" | sort) "$new" || true)"
-		if [ "$diff" != "" ]; then
-			echo "$diff";
-			if _confirm "[$server_name] Continue applying changes? [y/N] "; then
-				scp -F "ssh/config" "$new" "$server_name":.ssh/authorized_keys
-			fi
+		if [ "$(wc -l "$new" | awk '{print $1}')" -eq 0 ]; then
+			echo "[$server_name] ERROR: Refusing to push empty key file. There are no keys in the database!" >&2
+			return 1
 		else
-			echo "[$server_name] No changes"
+			diff="$(diff <(echo "$existing" | sort) "$new" || true)"
+			if [ "$diff" != "" ]; then
+				echo "$diff";
+				if _confirm "[$server_name] Continue applying changes? [y/N] "; then
+					scp -F "ssh/config" "$new" "$server_name":.ssh/authorized_keys
+				fi
+			else
+				echo "[$server_name] No changes"
+			fi
 		fi
 		rm -f "$new"
 	done
