@@ -18,7 +18,11 @@ ssh_verify() {
 
 ## Download SSH keys from each server into local database.
 ssh_fetch_keys() {
-	_query <<< "SELECT name, ssh FROM server WHERE ssh IS NOT NULL" | while IFS="|" read -r server_name ssh; do
+	local where="ssh IS NOT NULL";
+	if [ "${1:-}" != "" ]; then
+		where="name='$1'";
+	fi
+	_query <<< "SELECT name, ssh FROM server WHERE $where" | while IFS="|" read -r server_name ssh; do
 		echo "BEGIN;"
 		echo "DELETE FROM server__ssh_key WHERE server_name='$server_name';";
 		ssh "$ssh" -n cat .ssh/authorized_keys | sed 's/#.*//g' | awk NF | sort | while IFS=" " read -r type key comment; do
