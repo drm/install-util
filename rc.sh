@@ -88,6 +88,7 @@ _prelude() {
 	fi
 	export DO="${DO:-install status}"
 	export BASH="${BASH:-/bin/bash}"
+	export SCRIPTS_ROOT="${SCRIPTS_ROOT:-scripts}"
 
 	# In the future, for portability we might rather configure a command line to use mysql, psql or something else
 	export SQLITE; SQLITE="$(which sqlite3)"
@@ -309,7 +310,7 @@ install() {
 		build_vars="$(for f in $build_vars; do echo "$f"; done | sort | uniq)"
 
 		local remote_wd;
-		remote_wd="$($shell <<< 'mkdir -p scripts && cd scripts && pwd')"
+		remote_wd="$($shell <<< "mkdir -p $SCRIPTS_ROOT && cd $SCRIPTS_ROOT && pwd")"
 
 		for script_name in $DO; do
 			local src_script="$ROOT/apps/$app/$script_name.sh"
