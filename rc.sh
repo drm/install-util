@@ -310,7 +310,7 @@ install() {
 		build_vars="$(for f in $build_vars; do echo "$f"; done | sort | uniq)"
 
 		local remote_wd;
-		remote_wd="$($shell <<< "mkdir -p $SCRIPTS_ROOT && cd $SCRIPTS_ROOT && pwd")"
+		remote_wd="$($shell <<< "[ -d $SCRIPTS_ROOT ] || { mkdir -p $SCRIPTS_ROOT && chmod g+rwxs $SCRIPTS_ROOT; }; cd $SCRIPTS_ROOT && pwd")"
 
 		for script_name in $DO; do
 			local src_script="$ROOT/apps/$app/$script_name.sh"
@@ -406,15 +406,15 @@ install() {
 			local remote_dir="$remote_wd/$app/$ENV/$subdir"
 
 			if [ -d "$local_dir" ] && [ "$(find "$local_dir" -type f | wc -l)" -gt 0 ]; then
-				rsync_opts=("-prL")
+				rsync_opts=("-prL" "--chmod=g+rw" "--chmod=Dg+rwxs")
 				if [ "$DEBUG" -ge 3 ]; then
 					rsync_opts=("${rsync_opts[@]}" "-nv")
 				fi
 				if [ "$DEBUG" -lt 3 ]; then
 					if [ "$DEBUG" -lt 1 ]; then
-						$shell <<<"mkdir -p \"$remote_dir\""
+						$shell <<<"[ -d \"$remote_dir\" ] || { mkdir -p \"$remote_dir\" && chmod g+rwxs \"$remote_dir\"; }"
 					else
-						$shell <<<"mkdir -pv \"$remote_dir\""
+						$shell <<<"[ -d \"$remote_dir\" ] || { mkdir -pv \"$remote_dir\" && chmod -v g+rwxs \"$remote_dir\"; }"
 					fi
 				fi
 				if [ "$ssh" != "" ]; then
