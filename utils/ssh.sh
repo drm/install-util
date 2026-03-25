@@ -117,7 +117,7 @@ ssh_close_sockets() {
 	done;
 }
 
-ssh_close-sgent() {
+ssh_close_agent() {
 	ssh-agent -k
 	ssh_close_sockets
 }
@@ -126,6 +126,6 @@ ssh_agent() {
 	ssh_close_sockets
 	eval `ssh-agent`
 	ssh-add
-	trap close-agent EXIT
+	trap ssh_close_agent EXIT
 }
 
