@@ -89,6 +89,7 @@ _prelude() {
 	export DO="${DO:-install status}"
 	export BASH="${BASH:-/bin/bash}"
 	export SCRIPTS_ROOT="${SCRIPTS_ROOT:-scripts}"
+	export SCRIPTS_ROOT_GROUP="${SCRIPTS_ROOT_GROUP:-}"
 
 	# In the future, for portability we might rather configure a command line to use mysql, psql or something else
 	export SQLITE; SQLITE="$(which sqlite3)"
@@ -310,7 +311,17 @@ install() {
 		build_vars="$(for f in $build_vars; do echo "$f"; done | sort | uniq)"
 
 		local remote_wd;
-		remote_wd="$($shell <<< "[ -d $SCRIPTS_ROOT ] || { mkdir -p $SCRIPTS_ROOT && chmod g+rwxs $SCRIPTS_ROOT; }; cd $SCRIPTS_ROOT && pwd")"
+		remote_wd="$($shell <<-EOF
+			if ! [ -d $SCRIPTS_ROOT ]; then
+				mkdir -p $SCRIPTS_ROOT
+				if [ "$SCRIPTS_ROOT_GROUP" ]; then
+					chgrp $SCRIPTS_ROOT_GROUP $SCRIPTS_ROOT
+					chmod g+rwxs $SCRIPTS_ROOT
+				fi
+			fi
+			cd $SCRIPTS_ROOT && pwd
+		EOF
+		)"
 
 		for script_name in $DO; do
 			local src_script="$ROOT/apps/$app/$script_name.sh"
@@ -406,16 +417,24 @@ install() {
 			local remote_dir="$remote_wd/$app/$ENV/$subdir"
 
 			if [ -d "$local_dir" ] && [ "$(find "$local_dir" -type f | wc -l)" -gt 0 ]; then
-				rsync_opts=("-prL" "--chmod=g+rw" "--chmod=Dg+rwxs")
+				rsync_opts=("-prL")
+				if [ "$SCRIPTS_ROOT_GROUP" ]; then
+					rsync_opts=("${rsync_opts[@]}" "--chmod=g+rw" "--chmod=Dg+rwxs")
+				fi
 				if [ "$DEBUG" -ge 3 ]; then
 					rsync_opts=("${rsync_opts[@]}" "-nv")
 				fi
 				if [ "$DEBUG" -lt 3 ]; then
-					if [ "$DEBUG" -lt 1 ]; then
-						$shell <<<"[ -d \"$remote_dir\" ] || { mkdir -p \"$remote_dir\" && chmod g+rwxs \"$remote_dir\"; }"
-					else
-						$shell <<<"[ -d \"$remote_dir\" ] || { mkdir -pv \"$remote_dir\" && chmod -v g+rwxs \"$remote_dir\"; }"
-					fi
+					local v=""; if [ "$DEBUG" -ge 1 ]; then v="-v"; fi
+					$shell <<-EOF
+						if ! [ -d "$remote_dir" ]; then
+							mkdir -p $v "$remote_dir"
+							if [ "$SCRIPTS_ROOT_GROUP" ]; then
+								chgrp $v $SCRIPTS_ROOT_GROUP "$remote_dir"
+								chmod $v g+rwxs "$remote_dir"
+							fi
+						fi
+					EOF
 				fi
 				if [ "$ssh" != "" ]; then
 					rsync "${rsync_opts[@]}" "$local_dir/" "$ssh:$remote_dir/"
