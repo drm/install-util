@@ -419,7 +419,7 @@ install() {
 			if [ -d "$local_dir" ] && [ "$(find "$local_dir" -type f | wc -l)" -gt 0 ]; then
 				rsync_opts=("-prL")
 				if [ "$SCRIPTS_ROOT_GROUP" ]; then
-					rsync_opts=("${rsync_opts[@]}" "--chmod=g+rw" "--chmod=Dg+rwxs")
+					rsync_opts=("-rL" "--chmod=g+rw" "--chmod=Dg+rwxs")
 				fi
 				if [ "$DEBUG" -ge 3 ]; then
 					rsync_opts=("${rsync_opts[@]}" "-nv")
