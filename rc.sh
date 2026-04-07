@@ -166,13 +166,22 @@ _assert_not_empty() {
 
 ## Check the prerequisites for using this script
 _check_prereq() {
-	[ "$SQLITE" == "" ] && _fail "'sqlite3' is not found in the PATH..."
+	if [ "${STRATUM_DB:-}" != "" ]; then
+		which psql >/dev/null 2>&1 || _fail "'psql' is not found in the PATH (required for STRATUM_DB mode)..."
+	else
+		[ "$SQLITE" == "" ] && _fail "'sqlite3' is not found in the PATH..."
+	fi
 	[ "$SSH" == "" ] && _fail "'ssh' is not found in the PATH..."
 	[ "$RSYNC" == "" ] && _fail "'rsync' is not found in the PATH..."
 	return 0
 }
 
 db() {
+	if [ "${STRATUM_DB:-}" != "" ]; then
+		psql "$STRATUM_DB" "$@"
+		return
+	fi
+
 	local tmp_file="$(mktemp)"
 	local ret=0
 	local opts="";
@@ -197,7 +206,15 @@ db() {
 	return $ret
 }
 
-_query() {
+_pg_query() {
+	local query="$(cat)"
+	if [ "${DEBUG/s}" != "$DEBUG" ]; then
+		echo "[SQL] $(paste -sd" " <<< "$query")" >&2
+	fi
+	psql -At "$STRATUM_DB" <<< "$query"
+}
+
+_sqlite_query() {
 	local query="$(cat)"
 	local is_transaction
 
@@ -231,6 +248,14 @@ _query() {
 		fi
 	)"
 	$SQLITE -init /dev/null -bail "$@" <<< "$contents"
+}
+
+_query() {
+	if [ "${STRATUM_DB:-}" != "" ]; then
+		_pg_query
+	else
+		_sqlite_query
+	fi
 }
 
 _confirm() {
