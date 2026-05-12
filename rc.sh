@@ -3,6 +3,13 @@ export UTIL_ROOT; UTIL_ROOT="${UTIL_ROOT:-"${INSTALL_UTIL_ROOT}/utils"}"
 export UTILS; UTILS="${UTILS:-$(cd "$UTIL_ROOT" && for f in *.sh; do echo "${f/.sh/}"; done)}"
 export BASH_STARTUP_FLAGS="$-"
 
+# Default DEBUG to empty so the many `${DEBUG/<flag>}` tests below are safe
+# under `set -u`. Without this, the very first invocation in a fresh shell
+# (no exported DEBUG) trips an unbound-variable error in any function that
+# inspects DEBUG before `_prelude` has normalised it (line 102), causing
+# install.sh to exit silently with no work done.
+export DEBUG="${DEBUG-}"
+
 if [ "${BASH_VERSINFO:-0}" -lt 5 ]; then
 	echo "Needs at least bash version 5" >&2
 	if [ "${FORCE:-}" == "" ]; then
