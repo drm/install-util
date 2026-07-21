@@ -293,11 +293,16 @@ _cfg_get_ssh() {
 	fi
 }
 
+## Returns 'sudo' if the deployment is configured to run privileged, else empty.
+_cfg_get_sudo() {
+	_query <<< "SELECT CASE sudo WHEN true THEN 'sudo' END FROM deployment WHERE $(_server_deployment_where "$1" "$2" "${3:-0}")" 2>/dev/null
+}
+
 ## Get the ssh prefix for the specified app and environment. Will return empty string
 ## if no ssh is configured
 _cfg_get_ssh_prefix() {
 	local ssh; ssh=$(_cfg_get_ssh "$1" "$2" "${3:-0}");
-	local sudo; sudo="$(_query <<< "SELECT CASE sudo WHEN true THEN 'sudo' END FROM deployment WHERE $(_server_deployment_where "$1" "$2" "${3:-0}")" 2>/dev/null)"
+	local sudo; sudo="$(_cfg_get_sudo "$1" "$2" "${3:-0}")"
 	if [ "$ssh" != "" ]; then
 		shift 3;
 		echo "$SSH" -F "$SSH_CONFIG" "$* $ssh $sudo "
@@ -379,6 +384,7 @@ install() {
 
 			local ssh; ssh="$(_cfg_get_ssh "$app" "$ENV" "$node_id")"
 			local shell; shell="$(_cfg_get_shell "$app" "$ENV" "$node_id")"
+			local sudo; sudo="$(_cfg_get_sudo "$app" "$ENV" "$node_id")"
 
 			if [ -f "$ROOT/vars.sh" ]; then
 				_info "Reading vars"
@@ -536,9 +542,12 @@ install() {
 					rsync_opts=("-prL${file_opts_verbose}" "--delete")
 					$shell <<<"mkdir -p${file_opts_verbose} \"$remote_dir\""
 					if [ "$ssh" != "" ]; then
+						# staging dir is created by $shell (sudo when privileged), so the
+						# receiving rsync must run as root to write into it.
+						[ "$sudo" != "" ] && rsync_opts+=("--rsync-path=$sudo rsync")
 						rsync "${rsync_opts[@]}" "$local_dir/" "$ssh:$remote_dir/"
 					else
-						rsync "${rsync_opts[@]}" "$local_dir/" "$remote_dir/"
+						$sudo rsync "${rsync_opts[@]}" "$local_dir/" "$remote_dir/"
 					fi
 				fi
 			done;
